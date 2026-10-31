@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    pannawat_launcher_tmp_lib::run()
+    pannawat_launcher_lib::run()
 }

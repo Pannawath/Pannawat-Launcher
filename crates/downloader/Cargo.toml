@@ -13,5 +13,6 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 sha1 = { workspace = true }
 sha2 = { workspace = true }
+hex = { workspace = true }
 tracing = { workspace = true }
 futures = "0.3"

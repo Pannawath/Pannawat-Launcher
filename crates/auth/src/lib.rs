@@ -5,7 +5,7 @@ use uuid::Uuid;
 pub fn offline_uuid(username: &str) -> Uuid {
     let input = format!("OfflinePlayer:{username}");
     let hash = Md5::digest(input.as_bytes());
-    let mut bytes = hash.into();
+    let bytes = hash.into();
     // Set version bits (v3) and variant bits (RFC 4122)
     uuid::Builder::from_md5_bytes(bytes).into_uuid()
 }

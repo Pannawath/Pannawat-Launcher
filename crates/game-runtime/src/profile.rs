@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A launcher profile (one entry in the Library grid)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +23,10 @@ impl Profile {
     pub fn new(name: impl Into<String>, mc_version: impl Into<String>, base_dir: PathBuf) -> Self {
         let id = uuid::Uuid::new_v4().to_string();
         let game_dir = base_dir.join("profiles").join(&id);
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_default();
         Self {
             id,
             name: name.into(),
@@ -33,7 +38,7 @@ impl Profile {
             cover_image: None,
             play_time_secs: 0,
             game_dir,
-            created_at: chrono::Utc::now().to_rfc3339(),
+            created_at,
         }
     }
 }

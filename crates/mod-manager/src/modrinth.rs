@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 const MODRINTH_BASE: &str = "https://api.modrinth.com/v2";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ModrinthSearchResult {
     pub hits: Vec<ModrinthMod>,
     pub total_hits: u64,
