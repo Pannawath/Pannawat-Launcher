@@ -120,6 +120,20 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     setAllocatedRamMb,
     minRamMb,
     setMinRamMb,
+    windowWidth,
+    setWindowWidth,
+    windowHeight,
+    setWindowHeight,
+    fullscreen,
+    setFullscreen,
+    launcherBehavior,
+    setLauncherBehavior,
+    theme,
+    setTheme,
+    advancedRendering,
+    setAdvancedRendering,
+    discordRpc,
+    setDiscordRpc,
   } = useSettingsStore()
 
   const {
@@ -1621,6 +1635,16 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   >
                     Features
                   </button>
+                  <button
+                    onClick={() => setSettingsCategory('behavior')}
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      settingsCategory === 'behavior'
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Behavior
+                  </button>
                 </div>
 
                 <div className="space-y-1">
@@ -1650,6 +1674,16 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                     }`}
                   >
                     Java and memory
+                  </button>
+                  <button
+                    onClick={() => setSettingsCategory('window')}
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      settingsCategory === 'window'
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Window & Resolution
                   </button>
                 </div>
               </div>
@@ -1803,29 +1837,104 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                 </div>
               )}
 
-              {/* Category: Features */}
-              {settingsCategory === 'features' && (
-                <div className="space-y-4">
-                  <h4 className="font-bold text-sm text-white">Launcher Features</h4>
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
-                    <div>
-                      <h5 className="font-bold text-xs text-white">Show Snapshot Versions</h5>
-                      <p className="text-[10px] text-slate-400">
-                        Enable snapshot 26.3 and development builds.
-                      </p>
+              {/* Category: Window & Resolution */}
+              {settingsCategory === 'window' && (
+                <div className="space-y-5">
+                  <div>
+                    <h4 className="font-bold text-sm text-white">Window & Resolution</h4>
+                    <p className="text-xs text-slate-400">
+                      Configure the initial window dimensions when Minecraft launches.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-slate-300 block mb-1">
+                          Window Width (px)
+                        </label>
+                        <input
+                          type="number"
+                          value={windowWidth}
+                          onChange={(e) => setWindowWidth(Number(e.target.value))}
+                          className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/15 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-300 block mb-1">
+                          Window Height (px)
+                        </label>
+                        <input
+                          type="number"
+                          value={windowHeight}
+                          onChange={(e) => setWindowHeight(Number(e.target.value))}
+                          className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/15 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                        />
+                      </div>
                     </div>
-                    <button
-                      onClick={() => setShowSnapshots(!showSnapshots)}
-                      className={`w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${
-                        showSnapshots ? 'bg-emerald-500' : 'bg-slate-700'
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                          showSnapshots ? 'translate-x-4' : 'translate-x-0'
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                      <div>
+                        <h5 className="font-bold text-xs text-white">Start in Fullscreen</h5>
+                        <p className="text-[10px] text-slate-400">
+                          Automatically enter fullscreen mode upon game launch.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFullscreen(!fullscreen)}
+                        className={`w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${
+                          fullscreen ? 'bg-emerald-500' : 'bg-slate-700'
                         }`}
-                      />
-                    </button>
+                      >
+                        <div
+                          className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                            fullscreen ? 'translate-x-4' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Category: Behavior */}
+              {settingsCategory === 'behavior' && (
+                <div className="space-y-5">
+                  <div>
+                    <h4 className="font-bold text-sm text-white">Launcher Behavior</h4>
+                    <p className="text-xs text-slate-400">
+                      Determine what happens to the launcher window when starting Minecraft.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {[
+                      { id: 'keep_open', label: 'Keep launcher open', desc: 'Launcher stays in background while playing' },
+                      { id: 'hide', label: 'Hide launcher while playing', desc: 'Re-opens automatically after Minecraft exits' },
+                      { id: 'close', label: 'Close launcher completely', desc: 'Exits launcher process immediately upon start' },
+                    ].map((opt) => (
+                      <div
+                        key={opt.id}
+                        onClick={() => setLauncherBehavior(opt.id)}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                          launcherBehavior === opt.id
+                            ? 'bg-emerald-500/15 border-emerald-500/60'
+                            : 'bg-white/5 border-white/5 hover:border-white/10'
+                        }`}
+                      >
+                        <div>
+                          <h5 className="font-bold text-xs text-white">{opt.label}</h5>
+                          <p className="text-[11px] text-slate-400">{opt.desc}</p>
+                        </div>
+                        {launcherBehavior === opt.id && (
+                          <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
+                            <Check className="w-2.5 h-2.5 text-black stroke-[3]" />
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

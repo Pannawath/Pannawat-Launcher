@@ -4,12 +4,39 @@ import { persist } from 'zustand/middleware'
 export const useSettingsStore = create(
   persist(
     (set) => ({
-      showSnapshots: false,
+      // Java & Memory
       allocatedRamMb: 4096,
       minRamMb: 1024,
-      setShowSnapshots: (show) => set({ showSnapshots: show }),
+      javaPath: '',
+      jvmArgs: '-XX:+UseZGC -XX:+ZGenerational',
+
+      // Window & Resolution
+      windowWidth: 1920,
+      windowHeight: 1080,
+      fullscreen: false,
+
+      // Display & Appearance
+      theme: 'dark', // 'dark' | 'light' | 'oled' | 'system'
+      advancedRendering: true, // Blur & glass effects
+
+      // Launcher Behavior
+      launcherBehavior: 'keep_open', // 'keep_open' | 'hide' | 'close'
+      showSnapshots: false,
+      discordRpc: true,
+
+      // Setters
       setAllocatedRamMb: (ram) => set({ allocatedRamMb: ram }),
       setMinRamMb: (ram) => set({ minRamMb: ram }),
+      setJavaPath: (path) => set({ javaPath: path }),
+      setJvmArgs: (args) => set({ jvmArgs: args }),
+      setWindowWidth: (w) => set({ windowWidth: w }),
+      setWindowHeight: (h) => set({ windowHeight: h }),
+      setFullscreen: (f) => set({ fullscreen: f }),
+      setTheme: (t) => set({ theme: t }),
+      setAdvancedRendering: (r) => set({ advancedRendering: r }),
+      setLauncherBehavior: (b) => set({ launcherBehavior: b }),
+      setShowSnapshots: (s) => set({ showSnapshots: s }),
+      setDiscordRpc: (d) => set({ discordRpc: d }),
     }),
     { name: 'pannawat-launcher-settings' }
   )
