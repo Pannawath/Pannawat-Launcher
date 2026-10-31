@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import {
   Play,
   RotateCw,
@@ -12,104 +13,64 @@ import {
   Square,
   Gamepad2,
   Star,
-  Users,
   Compass,
   Bell,
   Settings as SettingsIcon,
   ChevronRight,
   LayoutGrid,
-  MessageSquare,
   Minus,
   Maximize2,
   X,
   ExternalLink,
+  Sliders,
+  Check,
+  FolderOpen,
+  Info,
 } from 'lucide-react'
 import { useSettingsStore } from './store/settingsStore'
 
-// Reference game mock data for fallback & showcase matching user reference image
-const DEFAULT_GAMES = [
-  {
-    id: 'minecraft',
-    name: 'Minecraft: Java Edition',
-    platform: 'minecraft',
-    banner_url: 'https://images.unsplash.com/photo-1627856013091-fed6e4e30025?auto=format&fit=crop&w=1920&q=80',
-    icon_url: 'https://cdn.iconscout.com/icon/free/png-256/free-minecraft-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-2795415.png',
-    description: 'Explore infinite blocky worlds, craft tools, build majestic structures, and battle monsters. Featuring official version 26.3, Microsoft Java 25 LTS, and ultra-low latency ZGC optimization.',
-    tag: 'Most Played',
-  },
-  {
-    id: 'roblox',
-    name: 'Roblox',
-    platform: 'roblox',
-    banner_url: 'https://images.unsplash.com/photo-1612287233207-6f8d3870624a?auto=format&fit=crop&w=1920&q=80',
-    icon_url: 'https://cdn.iconscout.com/icon/free/png-256/free-roblox-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-2795431.png',
-    description: 'Roblox is an online game platform and game creation system that allows users to program games and play games created by other users.',
-    tag: 'Most Recent',
-    launch_target: 'roblox://',
-  },
-  {
-    id: 'strange-clan',
-    name: 'Strange Clan',
-    platform: 'custom',
-    banner_url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1920&q=80',
-    icon_url: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=120',
-    description: "Strange Clan™ is an online, action RPG, using Play-2-Own mechanics to give players ownership of their digital items in game.",
-    tag: 'Promoted',
-  },
-  {
-    id: 'chihuahuaverse',
-    name: 'Chihuahuaverse',
-    platform: 'custom',
-    banner_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80',
-    icon_url: 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=120',
-    description: 'A vibrant universe of companion avatars, interactive social mini-games, and community exploration.',
-    tag: 'Promoted',
-  },
-  {
-    id: 'elpis-battle',
-    name: 'Elpis Battle',
-    platform: 'custom',
-    banner_url: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?auto=format&fit=crop&w=1920&q=80',
-    icon_url: 'https://images.unsplash.com/photo-1563089145-599997674d42?w=120',
-    description: 'Turn-based tactical RPG with strategic hero combinations, guild conquests, and seasonal leaderboards.',
-    tag: 'Trending',
-  },
-  {
-    id: 'fez',
-    name: 'FEZ',
-    platform: 'custom',
-    banner_url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1920&q=80',
-    icon_url: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=120',
-    description: 'A 2D creature living in a 2D world discovers the existence of a mysterious third dimension.',
-    tag: 'Trending',
-  },
-]
-
-// Mock friends list matching rightmost vertical strip in reference image
-const FRIENDS = [
-  { name: 'Alex', status: 'online', color: 'bg-emerald-400', img: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=64' },
-  { name: 'Kira', status: 'in-game', color: 'bg-amber-400', img: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=64' },
-  { name: 'Marcus', status: 'online', color: 'bg-emerald-400', img: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=64' },
-  { name: 'Sophie', status: 'busy', color: 'bg-purple-400', img: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=64' },
-  { name: 'David', status: 'online', color: 'bg-emerald-400', img: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=64' },
-  { name: 'Elena', status: 'away', color: 'bg-rose-400', img: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=64' },
-  { name: 'Leo', status: 'online', color: 'bg-emerald-400', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64' },
-  { name: 'Maya', status: 'online', color: 'bg-emerald-400', img: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=64' },
-]
+// Initial fallback for Minecraft before backend scan resolves
+const INITIAL_MINECRAFT = {
+  id: 'minecraft',
+  name: 'Minecraft: Java Edition',
+  platform: 'minecraft',
+  banner_url: 'https://images.unsplash.com/photo-1627856013091-fed6e4e30025?auto=format&fit=crop&w=1920&q=80',
+  icon_url: 'https://cdn.iconscout.com/icon/free/png-256/free-minecraft-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-2795415.png',
+  description: 'Explore infinite blocky worlds, craft tools, build majestic structures, and battle monsters. Featuring official version 26.3, Microsoft Java 25 LTS, and ultra-low latency ZGC optimization.',
+  launch_target: '26.3',
+  is_running: false,
+  tag: 'Most Played',
+}
 
 export default function App() {
   const {
     showSnapshots,
+    setShowSnapshots,
     selectedVersion,
     setSelectedVersion,
     allocatedRamMb,
+    setAllocatedRamMb,
     minRamMb,
+    setMinRamMb,
   } = useSettingsStore()
 
-  // Game Hub States
-  const [games, setGames] = useState(DEFAULT_GAMES)
+  // Real games state (strictly from machine scan)
+  const [games, setGames] = useState([INITIAL_MINECRAFT])
   const [activeGameId, setActiveGameId] = useState('minecraft')
-  const [favorites, setFavorites] = useState(['minecraft', 'roblox'])
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pannawat_favorites')
+      return saved ? JSON.parse(saved) : ['minecraft']
+    } catch {
+      return ['minecraft']
+    }
+  })
+  const [onlyFavorites, setOnlyFavorites] = useState(false)
+
+  // Drawer & Modal States
+  const [isModDrawerOpen, setIsModDrawerOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
   // Minecraft specific state
   const [versions, setVersions] = useState([])
@@ -125,7 +86,7 @@ export default function App() {
       const win = getCurrentWindow()
       await win.minimize()
     } catch (e) {
-      console.log('Window minimize:', e)
+      console.error('Minimize error:', e)
     }
   }
 
@@ -134,7 +95,7 @@ export default function App() {
       const win = getCurrentWindow()
       await win.toggleMaximize()
     } catch (e) {
-      console.log('Window toggleMaximize:', e)
+      console.error('Maximize error:', e)
     }
   }
 
@@ -143,24 +104,17 @@ export default function App() {
       const win = getCurrentWindow()
       await win.close()
     } catch (e) {
-      console.log('Window close:', e)
+      console.error('Close error:', e)
     }
   }
 
-  // 1. Fetch Installed Games (Minecraft, Steam, Roblox)
+  // 1. Fetch Real Installed Games from System
   useEffect(() => {
     async function loadGames() {
       try {
         const list = await invoke('get_installed_games')
         if (list && list.length > 0) {
-          // Merge detected games with showcase games
-          const merged = [...list]
-          DEFAULT_GAMES.forEach((dg) => {
-            if (!merged.some((m) => m.id === dg.id || m.name.toLowerCase() === dg.name.toLowerCase())) {
-              merged.push(dg)
-            }
-          })
-          setGames(merged)
+          setGames(list)
         }
       } catch (err) {
         console.error('Failed to load games:', err)
@@ -175,7 +129,7 @@ export default function App() {
       try {
         const list = await invoke('get_available_versions')
         setVersions(list || [])
-      } catch (err) {
+      } catch {
         setVersions([
           { id: '26.3', type: 'snapshot' },
           { id: '1.21.4', type: 'release' },
@@ -186,7 +140,7 @@ export default function App() {
     loadVersions()
   }, [])
 
-  // 3. Fetch Mods
+  // 3. Fetch Installed Mods
   useEffect(() => {
     async function loadMods() {
       try {
@@ -204,7 +158,20 @@ export default function App() {
     loadMods()
   }, [])
 
-  // 4. Listen to Minecraft launch status
+  // 4. Toggle mod state
+  const handleToggleMod = async (fileName) => {
+    try {
+      const updated = await invoke('toggle_mod', { profileId: 'default', fileName })
+      setInstalledMods(updated)
+    } catch (err) {
+      // optimistic update
+      setInstalledMods((prev) =>
+        prev.map((m) => (m.file_name === fileName ? { ...m, enabled: !m.enabled } : m))
+      )
+    }
+  }
+
+  // 5. Listen to Minecraft launch status
   useEffect(() => {
     let unlistenStatus
     let unlistenProgress
@@ -232,8 +199,19 @@ export default function App() {
     }
   }, [])
 
+  // Save favorites
+  const toggleFavorite = (id) => {
+    setFavorites((prev) => {
+      const next = prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
+      try {
+        localStorage.setItem('pannawat_favorites', JSON.stringify(next))
+      } catch (e) {}
+      return next
+    })
+  }
+
   // Active game object
-  const activeGame = games.find((g) => g.id === activeGameId) || games[0] || DEFAULT_GAMES[0]
+  const activeGame = games.find((g) => g.id === activeGameId) || games[0] || INITIAL_MINECRAFT
 
   // Handle Play Action
   const handleLaunch = async () => {
@@ -258,7 +236,7 @@ export default function App() {
         setLaunchStatus('idle')
       }
     } else {
-      // Universal game launch (Steam, Roblox, Custom)
+      // Universal game launch (Steam, Roblox, Epic, Custom)
       try {
         await invoke('launch_universal_game', {
           target: activeGame.launch_target || '',
@@ -279,20 +257,21 @@ export default function App() {
     }
   }
 
-  const toggleFavorite = (id) => {
-    if (favorites.includes(id)) {
-      setFavorites(favorites.filter((f) => f !== id))
-    } else {
-      setFavorites([...favorites, id])
-    }
-  }
+  // Filtered games
+  const displayedGames = onlyFavorites
+    ? games.filter((g) => favorites.includes(g.id))
+    : games
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#07090e] text-slate-100 font-sans select-none flex">
       {/* 1. LEFT ULTRA-COMPACT FLOATING ICON DOCK */}
       <div className="absolute left-4 top-4 bottom-4 z-40 flex flex-col items-center justify-between pointer-events-none">
-        {/* Top Circular Brand Logo */}
-        <div className="w-11 h-11 rounded-full bg-[#11141c]/90 backdrop-blur-xl border border-white/10 flex items-center justify-center shadow-2xl pointer-events-auto cursor-pointer hover:border-white/30 transition-all">
+        {/* Top Circular Brand Logo (Clicking returns to Minecraft) */}
+        <div
+          onClick={() => setActiveGameId('minecraft')}
+          className="w-11 h-11 rounded-full bg-[#11141c]/90 backdrop-blur-xl border border-white/10 flex items-center justify-center shadow-2xl pointer-events-auto cursor-pointer hover:border-emerald-400/50 hover:scale-105 transition-all"
+          title="Return to Home (Minecraft)"
+        >
           <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-200 flex items-center justify-center">
             <span className="text-[11px] font-black text-black">P</span>
           </div>
@@ -300,78 +279,98 @@ export default function App() {
 
         {/* Center Floating Dark Capsule Bar */}
         <div className="p-1.5 rounded-2xl bg-[#0c0f17]/85 backdrop-blur-2xl border border-white/10 shadow-2xl flex flex-col gap-2.5 pointer-events-auto">
-          <button className="w-10 h-10 rounded-xl bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-all">
-            <LayoutGrid className="w-4 h-4 text-emerald-400" />
+          {/* Library view */}
+          <button
+            onClick={() => setOnlyFavorites(false)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+              !onlyFavorites
+                ? 'bg-white/15 text-emerald-400 shadow-md'
+                : 'bg-transparent text-slate-400 hover:bg-white/10 hover:text-white'
+            }`}
+            title="All Installed Games"
+          >
+            <LayoutGrid className="w-4 h-4" />
           </button>
-          <button className="w-10 h-10 rounded-xl bg-transparent text-slate-400 flex items-center justify-center hover:bg-white/10 hover:text-white transition-all">
+
+          {/* Mod Manager Drawer */}
+          <button
+            onClick={() => setIsModDrawerOpen(!isModDrawerOpen)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+              isModDrawerOpen
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                : 'bg-transparent text-slate-400 hover:bg-white/10 hover:text-white'
+            }`}
+            title="Mod Manager"
+          >
             <Layers className="w-4 h-4" />
           </button>
-          <button className="w-10 h-10 rounded-xl bg-transparent text-slate-400 flex items-center justify-center hover:bg-white/10 hover:text-white transition-all">
+
+          {/* Quick Play active game */}
+          <button
+            onClick={handleLaunch}
+            className="w-10 h-10 rounded-xl bg-transparent text-slate-400 flex items-center justify-center hover:bg-emerald-500/20 hover:text-emerald-400 transition-all"
+            title={`Quick Launch: ${activeGame.name}`}
+          >
             <Gamepad2 className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Bottom Chat Icon */}
-        <div className="w-10 h-10 rounded-full bg-[#0c0f17]/85 backdrop-blur-2xl border border-white/10 flex items-center justify-center text-slate-400 hover:text-white pointer-events-auto cursor-pointer shadow-xl transition-all">
-          <MessageSquare className="w-4 h-4" />
+        {/* Bottom Settings Button */}
+        <div
+          onClick={() => setIsSettingsOpen(true)}
+          className="w-10 h-10 rounded-full bg-[#0c0f17]/85 backdrop-blur-2xl border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:border-white/30 pointer-events-auto cursor-pointer shadow-xl transition-all"
+          title="Settings (RAM, Java, JVM)"
+        >
+          <SettingsIcon className="w-4 h-4" />
         </div>
       </div>
 
       {/* 2. MAIN HERO VIEWPORT */}
-      <main className="relative flex-1 h-full overflow-hidden flex flex-col justify-between pl-20 pr-96">
+      <main className="relative flex-1 h-full overflow-hidden flex flex-col justify-between pl-20 pr-80">
         {/* Hero Background Wallpaper */}
         <div
-          className="absolute inset-0 bg-cover bg-center transition-all duration-700 filter brightness-95"
+          className="absolute inset-0 bg-cover bg-center transition-all duration-700 filter brightness-90"
           style={{ backgroundImage: `url(${activeGame.banner_url})` }}
         />
-        {/* Gradient Vignettes matching reference aesthetic */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#07090e] via-[#07090e]/20 to-[#07090e]/50 pointer-events-none" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#07090e]/95 via-[#07090e]/40 to-transparent pointer-events-none" />
+        {/* Subtle Vignettes matching reference aesthetic */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#07090e] via-[#07090e]/25 to-[#07090e]/50 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#07090e]/95 via-[#07090e]/35 to-transparent pointer-events-none" />
 
         {/* TOP BAR OVERLAY */}
-        <header className="relative z-30 flex items-center justify-between pt-5 pb-3 pl-4 pr-0" data-tauri-drag-region>
+        <header className="relative z-30 flex items-center justify-between pt-5 pb-3 pl-4 pr-4" data-tauri-drag-region>
           {/* Top Tag */}
           <div className="flex items-center gap-2">
-            <span className="px-4 py-1.5 rounded-full bg-black/40 backdrop-blur-xl border border-white/15 text-xs font-semibold text-slate-200 shadow-md">
-              {activeGame.platform === 'minecraft' ? 'Most Played' : activeGame.tag || 'Most Played'}
+            <span className="px-4 py-1.5 rounded-full bg-black/45 backdrop-blur-xl border border-white/15 text-xs font-semibold text-slate-200 shadow-md">
+              {activeGame.platform === 'minecraft' ? 'Most Played' : activeGame.tag || 'Installed'}
             </span>
           </div>
 
           {/* Top Right Floating Pill Bars */}
           <div className="flex items-center gap-3">
-            {/* Favorites / Featured Capsule */}
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/50 backdrop-blur-xl border border-white/10 shadow-lg">
-              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-              <div className="flex -space-x-1.5">
-                <img
-                  src="https://images.unsplash.com/photo-1563089145-599997674d42?w=64"
-                  className="w-5 h-5 rounded-full object-cover border border-black/80"
-                  alt="fav-1"
-                />
-                <img
-                  src="https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=64"
-                  className="w-5 h-5 rounded-full object-cover border border-black/80"
-                  alt="fav-2"
-                />
-                <img
-                  src="https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=64"
-                  className="w-5 h-5 rounded-full object-cover border border-black/80"
-                  alt="fav-3"
-                />
-              </div>
-              <ExternalLink className="w-3 h-3 text-slate-400 ml-0.5" />
+            {/* Favorites Filter Capsule */}
+            <div
+              onClick={() => setOnlyFavorites(!onlyFavorites)}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full backdrop-blur-xl border cursor-pointer transition-all shadow-lg ${
+                onlyFavorites
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                  : 'bg-black/50 border-white/10 text-slate-300 hover:bg-black/70'
+              }`}
+              title="Click to toggle favorites only"
+            >
+              <Star
+                className={`w-3.5 h-3.5 ${
+                  onlyFavorites ? 'text-amber-400 fill-amber-400' : 'text-amber-400'
+                }`}
+              />
+              <span className="text-xs font-bold font-mono">{favorites.length} Favs</span>
             </div>
 
             {/* User Profile Pill */}
             <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-black/55 backdrop-blur-xl border border-white/15 shadow-lg">
-              <Bell className="w-3.5 h-3.5 text-slate-400 hover:text-white cursor-pointer" />
-              <MessageSquare className="w-3.5 h-3.5 text-slate-400 hover:text-white cursor-pointer" />
               <div className="relative">
-                <img
-                  src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=64"
-                  alt="avatar"
-                  className="w-6 h-6 rounded-full object-cover border border-white/20"
-                />
+                <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-bold text-[10px] text-black">
+                  P
+                </div>
                 <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-black" />
               </div>
               <div className="flex flex-col text-left">
@@ -413,9 +412,8 @@ export default function App() {
         <div className="relative z-30 pl-6 pb-12 max-w-xl space-y-5">
           {/* Emblem + Game Title */}
           <div className="space-y-3">
-            {/* Stylized Emblem matching Strange Clan / Minecraft */}
-            <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-black/40 backdrop-blur-md border border-white/15 p-2 shadow-2xl flex items-center justify-center">
+            <div className="flex items-center gap-3.5">
+              <div className="w-14 h-14 rounded-2xl bg-black/50 backdrop-blur-md border border-white/15 p-2 shadow-2xl flex items-center justify-center">
                 <img
                   src={activeGame.icon_url}
                   alt={activeGame.name}
@@ -478,15 +476,25 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Badges */}
-                <span className="px-3.5 py-2 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-xs text-slate-300 flex items-center gap-1.5">
+                {/* Java 25 LTS Badge (Clicking opens Settings) */}
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="px-3.5 py-2 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-md border border-white/10 text-xs text-slate-300 flex items-center gap-1.5 transition-colors"
+                  title="Configure JVM & Memory"
+                >
                   <Cpu className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Java 25 LTS • ZGC</span>
-                </span>
-                <span className="px-3.5 py-2 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-xs text-emerald-300 flex items-center gap-1.5 font-mono">
+                </button>
+
+                {/* Mods Active Badge (Clicking opens Mod Manager) */}
+                <button
+                  onClick={() => setIsModDrawerOpen(true)}
+                  className="px-3.5 py-2 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-md border border-white/10 text-xs text-emerald-300 flex items-center gap-1.5 font-mono transition-colors"
+                  title="Open Mod Manager"
+                >
                   <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>{installedMods.length} Mods Active</span>
-                </span>
+                  <span>{installedMods.filter((m) => m.enabled).length} Mods Active</span>
+                </button>
               </div>
             </div>
           )}
@@ -566,19 +574,27 @@ export default function App() {
           )}
         </div>
 
-        {/* BOTTOM CENTER SCROLL INDICATOR CHEVRON */}
+        {/* BOTTOM CENTER SCROLL INDICATOR CHEVRON (Clicking toggles Game Details) */}
         <div className="relative z-30 pb-4 flex justify-center pointer-events-none">
-          <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center text-slate-400 pointer-events-auto cursor-pointer hover:text-white transition-colors">
-            <ChevronDown className="w-4 h-4" />
-          </div>
+          <button
+            onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+            className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center text-slate-400 pointer-events-auto cursor-pointer hover:text-white transition-colors"
+            title="Toggle Details & Modpack Info"
+          >
+            <ChevronDown
+              className={`w-4 h-4 transition-transform duration-300 ${
+                isDetailsOpen ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
         </div>
       </main>
 
-      {/* 3. RIGHT GAME CARDS STACK */}
-      <div className="absolute right-14 top-16 bottom-6 w-72 z-40 flex flex-col justify-between pointer-events-none">
-        {/* Cards Stack */}
+      {/* 3. RIGHT GAME CARDS STACK (Real Installed Games Only, No Dummy Data, Friends Removed) */}
+      <div className="absolute right-4 top-16 bottom-6 w-72 z-40 flex flex-col justify-between pointer-events-none">
+        {/* Real Installed Games Stack */}
         <div className="space-y-2.5 overflow-y-auto pr-1 pointer-events-auto max-h-[calc(100vh-140px)]">
-          {games.map((g) => {
+          {displayedGames.map((g) => {
             const isSelected = activeGameId === g.id
             return (
               <div
@@ -603,7 +619,7 @@ export default function App() {
                 {/* Game Meta */}
                 <div className="flex-1 min-w-0">
                   <span className="px-2 py-0.5 rounded-full bg-white/10 text-[9px] font-semibold text-slate-300 inline-block mb-0.5">
-                    {g.tag || (g.platform === 'minecraft' ? 'Most Played' : 'Trending')}
+                    {g.tag || (g.platform === 'minecraft' ? 'Most Played' : 'Installed')}
                   </span>
                   <h4 className="font-bold text-xs text-white truncate group-hover:text-emerald-300 transition-colors">
                     {g.name}
@@ -618,38 +634,211 @@ export default function App() {
           })}
         </div>
 
-        {/* Discover More Pill Button */}
+        {/* Discover More Pill Button (Opens Modrinth / Community Store) */}
         <div className="pt-2 pointer-events-auto">
-          <button className="w-full py-2.5 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-xl border border-white/20 text-xs font-bold text-slate-200 hover:text-white flex items-center justify-center gap-1.5 shadow-xl transition-all">
+          <button
+            onClick={() => openUrl('https://modrinth.com')}
+            className="w-full py-2.5 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-xl border border-white/20 text-xs font-bold text-slate-200 hover:text-white flex items-center justify-center gap-1.5 shadow-xl transition-all"
+            title="Browse Modrinth Mods & Modpacks"
+          >
             <span>DISCOVER MORE</span>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
           </button>
         </div>
       </div>
 
-      {/* 4. FAR RIGHT VERTICAL SOCIAL / FRIENDS STRIP */}
-      <div className="w-14 h-full py-5 bg-[#080a10]/90 backdrop-blur-2xl border-l border-white/5 z-40 flex flex-col items-center justify-start gap-4">
-        {/* Friends Header Icon */}
-        <div className="w-8 h-8 rounded-full bg-white/5 text-slate-300 flex items-center justify-center">
-          <Users className="w-4 h-4" />
-        </div>
-
-        {/* Friends Avatars Column */}
-        <div className="flex flex-col items-center gap-3 overflow-y-auto">
-          {FRIENDS.map((f, i) => (
-            <div key={i} className="relative group cursor-pointer" title={`${f.name} (${f.status})`}>
-              <img
-                src={f.img}
-                alt={f.name}
-                className="w-8 h-8 rounded-full object-cover border border-white/15 group-hover:scale-105 transition-transform"
-              />
-              <div
-                className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ${f.color} ring-2 ring-black`}
-              />
+      {/* 4. SLIDE-OUT MOD MANAGER DRAWER */}
+      {isModDrawerOpen && (
+        <div className="absolute right-0 top-0 bottom-0 w-80 bg-[#0c0f17]/95 backdrop-blur-2xl border-l border-white/10 p-5 z-50 flex flex-col justify-between shadow-2xl animate-in slide-in-from-right duration-200">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-emerald-400" />
+                <h3 className="font-black text-sm text-white uppercase tracking-wider">
+                  Mod Manager
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsModDrawerOpen(false)}
+                className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          ))}
+
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Performance and optimization modpack active on Minecraft {selectedVersion}.
+            </p>
+
+            {/* Mod List */}
+            <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-180px)] pr-1">
+              {installedMods.map((m) => (
+                <div
+                  key={m.file_name}
+                  className="p-3 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between"
+                >
+                  <div>
+                    <h5 className="font-bold text-xs text-white">{m.mod_name}</h5>
+                    <span className="text-[10px] font-mono text-slate-400 block truncate max-w-[180px]">
+                      {m.file_name}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleToggleMod(m.file_name)}
+                    className={`w-8 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${
+                      m.enabled ? 'bg-emerald-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                        m.enabled ? 'translate-x-3' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={() => openUrl('https://modrinth.com/mods')}
+            className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <span>Search More on Modrinth</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
         </div>
-      </div>
+      )}
+
+      {/* 5. SETTINGS MODAL */}
+      {isSettingsOpen && (
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-[#0e121a] border border-white/15 p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-black text-base text-white uppercase tracking-wider">
+                  Launcher Settings
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* RAM Allocations */}
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1">
+                  <span className="text-slate-300">Max Allocated RAM</span>
+                  <span className="text-emerald-400 font-mono">{allocatedRamMb} MB</span>
+                </div>
+                <input
+                  type="range"
+                  min="2048"
+                  max="16384"
+                  step="512"
+                  value={allocatedRamMb}
+                  onChange={(e) => setAllocatedRamMb(Number(e.target.value))}
+                  className="w-full accent-emerald-500 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1">
+                  <span className="text-slate-300">Min RAM</span>
+                  <span className="text-cyan-400 font-mono">{minRamMb} MB</span>
+                </div>
+                <input
+                  type="range"
+                  min="1024"
+                  max="8192"
+                  step="512"
+                  value={minRamMb}
+                  onChange={(e) => setMinRamMb(Number(e.target.value))}
+                  className="w-full accent-cyan-500 cursor-pointer"
+                />
+              </div>
+
+              {/* Snapshots Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/10">
+                <div>
+                  <h5 className="font-bold text-xs text-white">Show Snapshot Versions</h5>
+                  <span className="text-[10px] text-slate-400">
+                    Includes 26.3 and development builds
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowSnapshots(!showSnapshots)}
+                  className={`w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${
+                    showSnapshots ? 'bg-emerald-500' : 'bg-slate-700'
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                      showSnapshots ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Java Runtime Info */}
+              <div className="p-3 rounded-xl bg-black/40 border border-white/10 flex items-center gap-3">
+                <Cpu className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+                <div className="text-[11px]">
+                  <h6 className="font-bold text-white">Microsoft Java 25 LTS</h6>
+                  <p className="text-slate-400">ZGC Generational Garbage Collector enabled</p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsSettingsOpen(false)}
+              className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition-all"
+            >
+              Save & Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 6. BOTTOM DETAILS DRAWER (Toggled by Chevron) */}
+      {isDetailsOpen && (
+        <div className="absolute left-20 right-80 bottom-0 h-44 bg-[#0a0d14]/95 backdrop-blur-2xl border-t border-white/10 p-4 z-40 rounded-t-2xl shadow-2xl flex items-center justify-between gap-6 animate-in slide-in-from-bottom duration-200">
+          <div className="space-y-2 flex-1">
+            <h4 className="font-black text-sm text-white uppercase tracking-wider flex items-center gap-2">
+              <Info className="w-4 h-4 text-emerald-400" />
+              <span>Instance Details: {activeGame.name}</span>
+            </h4>
+            <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
+              {activeGame.description}
+            </p>
+            <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
+              <span>Platform: {activeGame.platform}</span>
+              <span>•</span>
+              <span>Target: {activeGame.launch_target}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsModDrawerOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white border border-white/10 transition-colors"
+            >
+              Manage Mods
+            </button>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white border border-white/10 transition-colors"
+            >
+              Engine Settings
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
