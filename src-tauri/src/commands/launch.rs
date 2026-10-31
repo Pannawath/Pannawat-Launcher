@@ -48,23 +48,7 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         },
     );
 
-    // 2. Ensure Java runtime
-    let _ = app.emit(
-        "launch-status",
-        LaunchStatusEvent {
-            status: "java".into(),
-            message: "Verifying Azul Zulu JRE 21...".into(),
-        },
-    );
-
-    let app_clone = app.clone();
-    let java_bin = ensure_java_runtime(&client, &runtime_dir, move |progress| {
-        let _ = app_clone.emit("download-progress", progress);
-    })
-    .await
-    .map_err(|e| format!("Java setup error: {:#}", e))?;
-
-    // 3. Prepare Game environment (Libraries, Assets, Fabric)
+    // 2. Prepare Game environment (Libraries, Assets, Fabric, and identify Java runtime)
     let _ = app.emit(
         "launch-status",
         LaunchStatusEvent {
@@ -73,18 +57,39 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         },
     );
 
-    let app_clone2 = app.clone();
+    let app_clone = app.clone();
     let prepared = prepare_game_environment(
         &client,
         &runtime_dir,
         &req.mc_version,
         req.fabric_version.as_deref(),
         move |progress| {
-            let _ = app_clone2.emit("download-progress", progress);
+            let _ = app_clone.emit("download-progress", progress);
         },
     )
     .await
     .map_err(|e| format!("Game assets setup error: {:#}", e))?;
+
+    // 3. Ensure Java runtime matching Minecraft requirements (e.g. Java 25 / java-runtime-epsilon for 26.3)
+    let _ = app.emit(
+        "launch-status",
+        LaunchStatusEvent {
+            status: "java".into(),
+            message: format!("Verifying Java Runtime ({}) for Minecraft {}...", prepared.java_component, req.mc_version),
+        },
+    );
+
+    let app_clone2 = app.clone();
+    let java_bin = ensure_java_runtime(
+        &client,
+        &runtime_dir,
+        &prepared.java_component,
+        move |progress| {
+            let _ = app_clone2.emit("download-progress", progress);
+        },
+    )
+    .await
+    .map_err(|e| format!("Java setup error: {:#}", e))?;
 
     // 4. Install standard performance mods if profile is new or requested
     let mods_dir = profile_dir.join("mods");

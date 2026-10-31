@@ -10,6 +10,7 @@ pub struct PreparedGameFiles {
     pub classpath: Vec<PathBuf>,
     pub main_class: String,
     pub asset_index: String,
+    pub java_component: String,
     pub game_arguments: Vec<String>,
     pub jvm_arguments: Vec<String>,
 }
@@ -164,6 +165,11 @@ pub async fn prepare_game_environment(
         }
     }
 
+    let java_component = version_json["javaVersion"]["component"]
+        .as_str()
+        .unwrap_or("java-runtime-epsilon")
+        .to_string();
+
     info!(
         "Batch downloading {} files (client, libraries, assets)...",
         download_tasks.len()
@@ -175,6 +181,7 @@ pub async fn prepare_game_environment(
         classpath,
         main_class,
         asset_index: asset_index_id,
+        java_component,
         game_arguments: vec![],
         jvm_arguments: vec![],
     })
