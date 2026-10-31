@@ -1,0 +1,39 @@
+[package]
+name = "pannawat-launcher"
+version = "0.1.0"
+description = "Pannawat Launcher — Custom Minecraft Launcher with Fabric, offline auth, and performance mods"
+authors = ["Pannawath"]
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "pannawat_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Workspace crates
+auth           = { path = "../crates/auth" }
+downloader     = { path = "../crates/downloader" }
+mod-manager    = { path = "../crates/mod-manager" }
+jvm-builder    = { path = "../crates/jvm-builder" }
+game-runtime   = { path = "../crates/game-runtime" }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

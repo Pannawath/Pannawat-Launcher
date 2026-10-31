@@ -1,0 +1,42 @@
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri
+src-tauri/target/
+src-tauri/WixTools/
+src-tauri/gen/
+
+# Game runtime (don't commit downloaded game files)
+game_runtime/
+**/assets/
+**/libraries/
+**/versions/
+**/*.jar
+**/java/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# Env / secrets
+.env
+.env.local
+.env*.local
+
+# Logs
+*.log
