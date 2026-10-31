@@ -7,20 +7,28 @@ import {
   AlertCircle,
   Clock,
   ChevronRight,
-  TrendingUp,
   Loader2,
   Bell,
   ShoppingBag,
+  Sparkles,
 } from 'lucide-react'
+import { useSettingsStore } from '../store/settingsStore'
 
 export default function Home() {
   const [username, setUsername] = useState('Totalitarochka')
+  const [selectedVersion, setSelectedVersion] = useState('26.3')
+  const [versions, setVersions] = useState([])
   const [isLaunching, setIsLaunching] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
   const [progress, setProgress] = useState({ downloaded: 0, total: 0, percent: 0 })
   const [activeTab, setActiveTab] = useState('Recently played')
 
+  const showSnapshots = useSettingsStore((s) => s.showSnapshots)
+  const allocatedRamMb = useSettingsStore((s) => s.allocatedRamMb)
+
   useEffect(() => {
+    loadVersions()
+
     let unlistenStatus
     let unlistenProgress
 
@@ -51,23 +59,42 @@ export default function Home() {
       if (unlistenStatus) unlistenStatus()
       if (unlistenProgress) unlistenProgress()
     }
-  }, [])
+  }, [showSnapshots])
+
+  const loadVersions = async () => {
+    try {
+      const list = await invoke('get_available_versions', {
+        includeSnapshots: showSnapshots,
+      })
+      setVersions(list)
+
+      // Ensure 26.3 or first version is selected
+      const has263 = list.some((v) => v.id === '26.3')
+      if (has263) {
+        setSelectedVersion('26.3')
+      } else if (list.length > 0 && !selectedVersion) {
+        setSelectedVersion(list[0].id)
+      }
+    } catch (e) {
+      console.error('Failed to load version manifest:', e)
+    }
+  }
 
   const handlePlay = async () => {
     try {
       setIsLaunching(true)
-      setStatusMessage('Initializing launcher pipeline...')
+      setStatusMessage(`Initializing launcher for Minecraft ${selectedVersion}...`)
       setProgress({ downloaded: 0, total: 0, percent: 0 })
 
       await invoke('launch_game', {
         req: {
           profile_id: 'default',
-          profile_name: 'Minecraft Java Edition',
+          profile_name: `Minecraft ${selectedVersion}`,
           username: username.trim() || 'Player',
-          mc_version: '1.21.4',
+          mc_version: selectedVersion,
           fabric_version: null,
           min_ram_mb: 1024,
-          max_ram_mb: 4096,
+          max_ram_mb: allocatedRamMb || 4096,
         },
       })
     } catch (err) {
@@ -122,8 +149,8 @@ export default function Home() {
       </div>
 
       {/* Hero Card Banner */}
-      <div className="relative rounded-3xl overflow-hidden h-[330px] border border-white/10 shadow-2xl flex flex-col justify-between p-8 bg-[#101216]">
-        {/* Ambient Game Banner Background */}
+      <div className="relative rounded-3xl overflow-hidden h-[340px] border border-white/10 shadow-2xl flex flex-col justify-between p-8 bg-[#101216]">
+        {/* Game Banner Background */}
         <div
           className="absolute inset-0 bg-cover bg-center brightness-[0.55] transition-all duration-700 hover:scale-105"
           style={{
@@ -132,11 +159,35 @@ export default function Home() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0e1015] via-[#0e1015]/60 to-transparent" />
 
-        {/* Top meta */}
-        <div className="relative z-10">
-          <span className="text-[11px] font-medium text-gray-300 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
-            Last played Today • Fabric 1.21.4
+        {/* Top meta with Version Selector */}
+        <div className="relative z-10 flex items-center justify-between">
+          <span className="text-[11px] font-medium text-gray-300 bg-black/50 backdrop-blur-md px-3.5 py-1 rounded-full border border-white/10 flex items-center gap-1.5">
+            <Sparkles size={12} className="text-cyan-400" />
+            Selected Channel: {showSnapshots ? 'All (Releases + Snapshots)' : 'Releases Only'}
           </span>
+
+          {/* Version Dropdown Select */}
+          <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/15 shadow-md">
+            <span className="text-[11px] font-bold text-gray-300">Version:</span>
+            <select
+              value={selectedVersion}
+              onChange={(e) => setSelectedVersion(e.target.value)}
+              disabled={isLaunching}
+              className="bg-transparent text-xs font-bold text-cyan-400 focus:outline-none cursor-pointer"
+            >
+              {/* Highlight Minecraft 26.3 */}
+              <option value="26.3" className="bg-[#12141a] text-cyan-300 font-bold">
+                Minecraft 26.3 (Official Highlight)
+              </option>
+              {versions
+                .filter((v) => v.id !== '26.3')
+                .map((v) => (
+                  <option key={v.id} value={v.id} className="bg-[#12141a] text-gray-200">
+                    {v.id} ({v.type})
+                  </option>
+                ))}
+            </select>
+          </div>
         </div>
 
         {/* Bottom Hero Info & Play Button */}
@@ -146,14 +197,19 @@ export default function Home() {
               <span className="text-[11px] font-semibold text-gray-300 bg-white/10 px-2.5 py-0.5 rounded-md flex items-center gap-1 backdrop-blur-sm">
                 <Clock size={11} /> 102 hrs played
               </span>
+              {selectedVersion === '26.3' && (
+                <span className="text-[10px] font-bold bg-cyan-400/20 text-cyan-300 border border-cyan-400/30 px-2 py-0.5 rounded-md">
+                  ★ SPECIFIED TARGET
+                </span>
+              )}
             </div>
 
             <h2 className="text-3xl font-black text-white tracking-tight drop-shadow-md">
-              Minecraft: Fabric Performance Edition
+              Minecraft Java Edition {selectedVersion}
             </h2>
             <p className="text-xs text-gray-300/80 leading-relaxed line-clamp-2">
-              Equipped with Sodium, Lithium, and Generational ZGC. Stutter-free rendering and
-              high-efficiency physics ready for your next adventure.
+              Equipped with Generational ZGC and custom performance pipeline. Downloaded and
+              verified directly with official Mojang &amp; Fabric meta servers.
             </p>
           </div>
 
@@ -174,12 +230,12 @@ export default function Home() {
               {isLaunching ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  <span>Launching...</span>
+                  <span>Launching {selectedVersion}...</span>
                 </>
               ) : (
                 <>
                   <Play size={14} fill="currentColor" />
-                  <span>Continue playing</span>
+                  <span>Play {selectedVersion}</span>
                 </>
               )}
             </button>
@@ -189,13 +245,13 @@ export default function Home() {
         {/* Progress Bar inside hero if launching */}
         {statusMessage && (
           <div className="relative z-10 mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-xs text-white">
-            <span>{statusMessage}</span>
-            {progress.total > 0 && <span>{progress.percent}%</span>}
+            <span className="truncate">{statusMessage}</span>
+            {progress.total > 0 && <span className="font-mono">{progress.percent}%</span>}
           </div>
         )}
       </div>
 
-      {/* Bottom 3-Column Bento Grid */}
+      {/* Bento Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Card 1: Achievements */}
         <div className="p-6 rounded-3xl bg-[#12141a] border border-[#1f232d] space-y-4">

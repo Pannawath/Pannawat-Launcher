@@ -1,10 +1,9 @@
 mod commands;
 
-use commands::{auth, discord, download, launch, mods, profile};
+use commands::{auth, discord, download, launch, mods, profile, versions};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Start Discord RPC listener in background
     discord::init_discord_rpc();
 
     tauri::Builder::default()
@@ -12,6 +11,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Auth
             auth::create_offline_session,
+            // Versions
+            versions::get_available_versions,
             // Profiles & Modpacks
             profile::list_profiles,
             profile::create_profile,

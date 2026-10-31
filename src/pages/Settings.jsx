@@ -1,74 +1,86 @@
-import { useThemeStore } from '../store/themeStore'
-
-const THEMES = [
-  { id: 'purple', label: 'Enderman Purple', color: '#8b5cf6' },
-  { id: 'green',  label: 'Minecraft Green', color: '#44af28' },
-  { id: 'blue',   label: 'Diamond Blue',    color: '#3b9edd' },
-  { id: 'red',    label: 'Nether Red',      color: '#e53e3e' },
-]
+import { useSettingsStore } from '../store/settingsStore'
+import { ToggleLeft, ToggleRight, Cpu, Layers } from 'lucide-react'
 
 export default function Settings() {
-  const { theme, setTheme } = useThemeStore()
+  const { showSnapshots, setShowSnapshots, allocatedRamMb, setAllocatedRamMb, minRamMb, setMinRamMb } =
+    useSettingsStore()
 
   return (
-    <div className="p-6 max-w-2xl">
-      <h1 className="text-xl font-semibold text-[var(--color-text)] mb-6">Settings</h1>
+    <div className="p-8 max-w-4xl mx-auto space-y-8 select-none">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-white">Launcher Settings</h1>
+        <p className="text-xs text-gray-400 mt-1">
+          Customize version channels, JVM memory parameters, and experimental features.
+        </p>
+      </div>
 
-      {/* Appearance */}
-      <section className="mb-8">
-        <h2 className="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
-          Appearance
-        </h2>
-        <div className="flex gap-3 flex-wrap">
-          {THEMES.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTheme(t.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
-                theme === t.id
-                  ? 'border-[var(--color-accent)] text-white'
-                  : 'border-[var(--color-surface-border)] text-[var(--color-text-muted)] hover:border-[var(--color-accent)]'
-              }`}
-            >
-              <span
-                className="w-3 h-3 rounded-full"
-                style={{ background: t.color }}
-              />
-              {t.label}
-            </button>
-          ))}
+      {/* Minecraft Versions Channel */}
+      <div className="p-6 rounded-3xl bg-[#12141a] border border-[#1f232d] space-y-4">
+        <div className="flex items-center gap-2">
+          <Layers size={18} className="text-cyan-400" />
+          <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+            Version Channels
+          </h2>
         </div>
-      </section>
 
-      {/* Java / RAM */}
-      <section className="mb-8">
-        <h2 className="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
-          Java
-        </h2>
-        <div className="space-y-3">
-          <div className="flex items-center gap-4">
-            <label className="text-sm text-[var(--color-text)] w-24">Min RAM</label>
-            <input
-              type="number"
-              defaultValue={512}
-              className="w-28 px-3 py-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-surface-border)] text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
-            />
-            <span className="text-xs text-[var(--color-text-muted)]">MB</span>
+        <div className="flex items-center justify-between pt-2">
+          <div className="space-y-0.5">
+            <span className="text-sm font-semibold text-gray-200">
+              Enable Snapshots &amp; Pre-releases
+            </span>
+            <p className="text-xs text-gray-500">
+              Show experimental developmental builds and snapshots in version selectors.
+            </p>
           </div>
-          <div className="flex items-center gap-4">
-            <label className="text-sm text-[var(--color-text)] w-24">Max RAM</label>
+
+          <button
+            onClick={() => setShowSnapshots(!showSnapshots)}
+            className="cursor-pointer text-cyan-400 hover:text-cyan-300 transition-colors"
+          >
+            {showSnapshots ? (
+              <span className="flex items-center gap-1.5 text-xs font-bold text-cyan-400">
+                <ToggleRight size={32} /> ENABLED
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs font-bold text-gray-500">
+                <ToggleLeft size={32} /> DISABLED
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* JVM Memory Tuning */}
+      <div className="p-6 rounded-3xl bg-[#12141a] border border-[#1f232d] space-y-5">
+        <div className="flex items-center gap-2">
+          <Cpu size={18} className="text-cyan-400" />
+          <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+            Java Virtual Machine (JVM) &amp; Memory
+          </h2>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-300 font-semibold">Maximum RAM Allocation</span>
+              <span className="font-mono text-cyan-400 font-bold">{(allocatedRamMb / 1024).toFixed(1)} GB ({allocatedRamMb} MB)</span>
+            </div>
             <input
-              type="number"
-              defaultValue={4096}
-              className="w-28 px-3 py-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-surface-border)] text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
+              type="range"
+              min="1024"
+              max="16384"
+              step="512"
+              value={allocatedRamMb}
+              onChange={(e) => setAllocatedRamMb(Number(e.target.value))}
+              className="w-full h-1.5 bg-[#1b1f2b] rounded-lg appearance-none cursor-pointer accent-cyan-400"
             />
-            <span className="text-xs text-[var(--color-text-muted)]">MB</span>
+          </div>
+
+          <div className="text-[11px] text-gray-500 bg-[#161821] p-3 rounded-xl border border-white/5">
+            💡 <strong>Performance note:</strong> Generational ZGC (<code>-XX:+UseZGC -XX:+ZGenerational</code>) works best with 4 GB or more RAM to eliminate micro-stutters during world chunk loading.
           </div>
         </div>
-      </section>
-
-      {/* More sections: JVM flags, Network/Proxy, Launch behavior, Account */}
-      <p className="text-xs text-[var(--color-text-muted)]">More settings coming in Phase 2.</p>
+      </div>
     </div>
   )
 }
