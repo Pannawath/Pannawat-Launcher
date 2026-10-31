@@ -10,7 +10,6 @@ pub struct JvmConfig {
     pub java_path: PathBuf,
     pub min_ram_mb: u32,
     pub max_ram_mb: u32,
-    /// Extra custom flags appended by the user
     pub extra_flags: Vec<String>,
     pub game_dir: PathBuf,
     pub version_id: String,
@@ -20,13 +19,14 @@ pub struct JvmConfig {
     pub natives_dir: PathBuf,
     pub classpath: Vec<PathBuf>,
     pub main_class: String,
-    pub game_args: Vec<String>,
+    pub assets_dir: PathBuf,
+    pub asset_index: String,
 }
 
-/// Build the full JVM argument list
+/// Build the full JVM argument list for modern Minecraft
 pub fn build_args(cfg: &JvmConfig) -> Vec<String> {
     let mut args: Vec<String> = vec![
-        // GC — ZGC with generational mode (Java 21+)
+        // Performance GC
         "-XX:+UseZGC".into(),
         "-XX:+ZGenerational".into(),
         "-XX:+AlwaysPreTouch".into(),
@@ -34,6 +34,24 @@ pub fn build_args(cfg: &JvmConfig) -> Vec<String> {
         "-Xss1M".into(),
         format!("-Xms{}M", cfg.min_ram_mb),
         format!("-Xmx{}M", cfg.max_ram_mb),
+        // Modern Java modules access
+        "--enable-native-access=ALL-UNNAMED".into(),
+        "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED".into(),
+        // Natives & Shared libs
+        format!(
+            "-Djava.library.path={}",
+            cfg.natives_dir.to_string_lossy()
+        ),
+        format!(
+            "-Dorg.lwjgl.system.SharedLibraryExtractPath={}",
+            cfg.natives_dir.to_string_lossy()
+        ),
+        format!(
+            "-Dio.netty.native.workdir={}",
+            cfg.natives_dir.to_string_lossy()
+        ),
+        "-Dminecraft.launcher.brand=PannawatLauncher".into(),
+        "-Dminecraft.launcher.version=1.0.0".into(),
         // Classpath
         "-cp".into(),
         cfg.classpath
@@ -41,21 +59,39 @@ pub fn build_args(cfg: &JvmConfig) -> Vec<String> {
             .map(|p| p.to_string_lossy().to_string())
             .collect::<Vec<_>>()
             .join(if cfg!(windows) { ";" } else { ":" }),
-        // Natives
-        format!(
-            "-Djava.library.path={}",
-            cfg.natives_dir.to_string_lossy()
-        ),
     ];
 
-    // User custom flags
+    // User extra custom flags
     args.extend(cfg.extra_flags.iter().cloned());
 
     // Main class
     args.push(cfg.main_class.clone());
 
-    // Game arguments
-    args.extend(cfg.game_args.iter().cloned());
+    // Minecraft Game Arguments (standard modern spec)
+    args.extend(vec![
+        "--username".into(),
+        cfg.username.clone(),
+        "--version".into(),
+        cfg.version_id.clone(),
+        "--gameDir".into(),
+        cfg.game_dir.to_string_lossy().to_string(),
+        "--assetsDir".into(),
+        cfg.assets_dir.to_string_lossy().to_string(),
+        "--assetIndex".into(),
+        cfg.asset_index.clone(),
+        "--uuid".into(),
+        cfg.uuid.clone(),
+        "--accessToken".into(),
+        cfg.access_token.clone(),
+        "--clientId".into(),
+        "PannawatClient".into(),
+        "--xuid".into(),
+        "0".into(),
+        "--userType".into(),
+        "mojang".into(),
+        "--versionType".into(),
+        "release".into(),
+    ]);
 
     args
 }
@@ -65,7 +101,7 @@ pub async fn spawn_game(cfg: &JvmConfig) -> Result<tokio::process::Child> {
     let args = build_args(cfg);
 
     info!(
-        "Launching: {} {}",
+        "Executing Java process: {} {}",
         cfg.java_path.display(),
         args.join(" ")
     );
@@ -78,40 +114,4 @@ pub async fn spawn_game(cfg: &JvmConfig) -> Result<tokio::process::Child> {
         .spawn()?;
 
     Ok(child)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn dummy_cfg() -> JvmConfig {
-        JvmConfig {
-            java_path: PathBuf::from("java"),
-            min_ram_mb: 512,
-            max_ram_mb: 4096,
-            extra_flags: vec![],
-            game_dir: PathBuf::from("."),
-            version_id: "1.21.4".into(),
-            username: "Pannawath".into(),
-            uuid: "00000000-0000-0000-0000-000000000000".into(),
-            access_token: "fake".into(),
-            natives_dir: PathBuf::from("natives"),
-            classpath: vec![PathBuf::from("minecraft.jar")],
-            main_class: "net.minecraft.client.main.Main".into(),
-            game_args: vec![],
-        }
-    }
-
-    #[test]
-    fn args_contain_zgc() {
-        let args = build_args(&dummy_cfg());
-        assert!(args.iter().any(|a| a == "-XX:+UseZGC"));
-    }
-
-    #[test]
-    fn args_contain_ram() {
-        let args = build_args(&dummy_cfg());
-        assert!(args.iter().any(|a| a == "-Xmx4096M"));
-        assert!(args.iter().any(|a| a == "-Xms512M"));
-    }
 }

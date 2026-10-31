@@ -69,7 +69,7 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         "launch-status",
         LaunchStatusEvent {
             status: "assets".into(),
-            message: "Fetching Minecraft & Fabric assets and libraries...".into(),
+            message: format!("Downloading Minecraft {} assets & libraries...", req.mc_version),
         },
     );
 
@@ -111,12 +111,8 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         natives_dir,
         classpath: prepared.classpath,
         main_class: prepared.main_class,
-        game_args: vec![
-            "--assetIndex".into(),
-            prepared.asset_index,
-            "--assetsDir".into(),
-            runtime_dir.join("assets").to_string_lossy().to_string(),
-        ],
+        assets_dir: runtime_dir.join("assets"),
+        asset_index: prepared.asset_index,
     };
 
     let _ = app.emit(
@@ -134,7 +130,27 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         .await
         .map_err(|e| format!("Failed to spawn game process: {:#}", e))?;
 
-    // Spawn async monitor to read output/detect crash
+    // Pipe stdout and stderr to capture crashes or errors
+    if let Some(stdout) = child.stdout.take() {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                println!("[MC-OUT] {}", line);
+            }
+        });
+    }
+
+    if let Some(stderr) = child.stderr.take() {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                eprintln!("[MC-ERR] {}", line);
+            }
+        });
+    }
+
     tokio::spawn(async move {
         let status = child.wait().await;
         tracing::info!("Game process exited with: {:?}", status);
