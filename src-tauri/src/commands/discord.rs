@@ -1,5 +1,6 @@
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use std::sync::Mutex;
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
@@ -8,7 +9,8 @@ const DISCORD_APP_ID: &str = "1301490204987723827";
 static DISCORD_CLIENT: Mutex<Option<DiscordIpcClient>> = Mutex::new(None);
 
 pub fn init_discord_rpc() {
-    tokio::spawn(async {
+    // Run Discord IPC in a dedicated OS thread (so it does not require an active Tokio runtime at startup)
+    thread::spawn(|| {
         let mut client = DiscordIpcClient::new(DISCORD_APP_ID);
         if client.connect().is_ok() {
             info!("Discord RPC Connected successfully");
