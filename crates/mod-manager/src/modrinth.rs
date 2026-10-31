@@ -20,18 +20,24 @@ pub struct ModrinthMod {
     pub versions: Vec<String>,
 }
 
-/// Search mods on Modrinth, filtered by game version and Fabric loader
+/// Search mods on Modrinth, filtered by game version and Fabric loader, with automatic fallback
 pub async fn search(
     client: &reqwest::Client,
     query: &str,
     game_version: &str,
     limit: u32,
 ) -> Result<ModrinthSearchResult> {
-    let facets = format!(
-        r#"[["categories:fabric"],["versions:{game_version}"]]"#
-    );
-    let result = client
+    let req_builder = client
         .get(format!("{MODRINTH_BASE}/search"))
+        .header("User-Agent", "PannawatLauncher/0.1.0");
+
+    let facets = if !game_version.is_empty() && game_version != "26.3" {
+        format!(r#"[["categories:fabric"],["versions:{game_version}"]]"#)
+    } else {
+        r#"[["categories:fabric"]]"#.to_string()
+    };
+
+    let result = req_builder
         .query(&[
             ("query", query),
             ("facets", &facets),
@@ -41,6 +47,25 @@ pub async fn search(
         .await?
         .json::<ModrinthSearchResult>()
         .await?;
+
+    if result.hits.is_empty() && !game_version.is_empty() {
+        // Fallback without version constraint
+        let fallback_facets = r#"[["categories:fabric"]]"#;
+        let fallback = client
+            .get(format!("{MODRINTH_BASE}/search"))
+            .header("User-Agent", "PannawatLauncher/0.1.0")
+            .query(&[
+                ("query", query),
+                ("facets", fallback_facets),
+                ("limit", &limit.to_string()),
+            ])
+            .send()
+            .await?
+            .json::<ModrinthSearchResult>()
+            .await?;
+        return Ok(fallback);
+    }
+
     Ok(result)
 }
 
@@ -53,8 +78,8 @@ pub async fn get_version_url(
     let url = format!("{MODRINTH_BASE}/project/{project_id}/version");
     let versions: Vec<serde_json::Value> = client
         .get(&url)
+        .header("User-Agent", "PannawatLauncher/0.1.0")
         .query(&[
-            ("game_versions", format!("[\"{game_version}\"]")),
             ("loaders", "[\"fabric\"]".to_string()),
         ])
         .send()
@@ -62,8 +87,16 @@ pub async fn get_version_url(
         .json()
         .await?;
 
+    // Try matching exact version first, or take latest fabric version
     let file_url = versions
-        .first()
+        .iter()
+        .find(|v| {
+            v["game_versions"]
+                .as_array()
+                .map(|arr| arr.iter().any(|gv| gv.as_str() == Some(game_version)))
+                .unwrap_or(false)
+        })
+        .or_else(|| versions.first())
         .and_then(|v| v["files"].as_array())
         .and_then(|files| files.first())
         .and_then(|f| f["url"].as_str())

@@ -13,8 +13,6 @@ import {
   Square,
   Gamepad2,
   Star,
-  Compass,
-  Bell,
   Settings as SettingsIcon,
   ChevronRight,
   LayoutGrid,
@@ -23,8 +21,11 @@ import {
   X,
   ExternalLink,
   Sliders,
+  Plus,
+  Trash2,
+  Search,
+  Download,
   Check,
-  FolderOpen,
   Info,
 } from 'lucide-react'
 import { useSettingsStore } from './store/settingsStore'
@@ -54,7 +55,7 @@ export default function App() {
     setMinRamMb,
   } = useSettingsStore()
 
-  // Real games state (strictly from machine scan)
+  // Real games state (strictly from machine scan + custom games)
   const [games, setGames] = useState([INITIAL_MINECRAFT])
   const [activeGameId, setActiveGameId] = useState('minecraft')
   const [favorites, setFavorites] = useState(() => {
@@ -69,6 +70,12 @@ export default function App() {
 
   // Drawer & Modal States
   const [isModDrawerOpen, setIsModDrawerOpen] = useState(false)
+  const [modTab, setModTab] = useState('installed') // 'installed' | 'catalog'
+  const [modSearchQuery, setModSearchQuery] = useState('')
+  const [catalogMods, setCatalogMods] = useState([])
+  const [isSearchingMods, setIsSearchingMods] = useState(false)
+  const [installingModId, setInstallingModId] = useState(null)
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
@@ -109,17 +116,18 @@ export default function App() {
   }
 
   // 1. Fetch Real Installed Games from System
-  useEffect(() => {
-    async function loadGames() {
-      try {
-        const list = await invoke('get_installed_games')
-        if (list && list.length > 0) {
-          setGames(list)
-        }
-      } catch (err) {
-        console.error('Failed to load games:', err)
+  const loadGames = async () => {
+    try {
+      const list = await invoke('get_installed_games')
+      if (list && list.length > 0) {
+        setGames(list)
       }
+    } catch (err) {
+      console.error('Failed to load games:', err)
     }
+  }
+
+  useEffect(() => {
     loadGames()
   }, [])
 
@@ -141,37 +149,133 @@ export default function App() {
   }, [])
 
   // 3. Fetch Installed Mods
-  useEffect(() => {
-    async function loadMods() {
-      try {
-        const mods = await invoke('list_installed_mods', { profileId: 'default' })
-        setInstalledMods(mods || [])
-      } catch {
-        setInstalledMods([
-          { file_name: 'sodium-0.6.9.jar', mod_name: 'Sodium', enabled: true },
-          { file_name: 'lithium-0.14.7.jar', mod_name: 'Lithium', enabled: true },
-          { file_name: 'ferritecore-7.1.1.jar', mod_name: 'FerriteCore', enabled: true },
-          { file_name: 'immediatelyfast-1.3.3.jar', mod_name: 'ImmediatelyFast', enabled: true },
-        ])
-      }
+  const loadInstalledMods = async () => {
+    try {
+      const mods = await invoke('list_installed_mods', { profileId: 'default' })
+      setInstalledMods(mods || [])
+    } catch {
+      setInstalledMods([
+        { file_name: 'sodium-0.6.9.jar', mod_name: 'Sodium', enabled: true },
+        { file_name: 'lithium-0.14.7.jar', mod_name: 'Lithium', enabled: true },
+        { file_name: 'ferritecore-7.1.1.jar', mod_name: 'FerriteCore', enabled: true },
+        { file_name: 'immediatelyfast-1.3.3.jar', mod_name: 'ImmediatelyFast', enabled: true },
+      ])
     }
-    loadMods()
+  }
+
+  useEffect(() => {
+    loadInstalledMods()
   }, [])
 
   // 4. Toggle mod state
-  const handleToggleMod = async (fileName) => {
+  const handleToggleMod = async (mod) => {
     try {
-      const updated = await invoke('toggle_mod', { profileId: 'default', fileName })
-      setInstalledMods(updated)
+      await invoke('toggle_mod', {
+        profileId: 'default',
+        filename: mod.filename || mod.file_name,
+        enable: !mod.enabled,
+      })
+      await loadInstalledMods()
     } catch (err) {
+      console.error('Toggle mod error:', err)
       // optimistic update
       setInstalledMods((prev) =>
-        prev.map((m) => (m.file_name === fileName ? { ...m, enabled: !m.enabled } : m))
+        prev.map((m) =>
+          (m.filename || m.file_name) === (mod.filename || mod.file_name)
+            ? { ...m, enabled: !m.enabled }
+            : m
+        )
       )
     }
   }
 
-  // 5. Listen to Minecraft launch status
+  // 5. In-App Modrinth Search & Install
+  const handleSearchModrinth = async (query = modSearchQuery) => {
+    setIsSearchingMods(true)
+    try {
+      const res = await invoke('search_mods', {
+        req: {
+          query: query || '',
+          game_version: selectedVersion || '1.21.4',
+          source: 'modrinth',
+          limit: 15,
+        },
+      })
+      setCatalogMods(res.hits || [])
+    } catch (err) {
+      console.error('Mod search error:', err)
+    } finally {
+      setIsSearchingMods(false)
+    }
+  }
+
+  const handleInstallMod = async (modId) => {
+    setInstallingModId(modId)
+    try {
+      await invoke('install_mod', {
+        profileId: 'default',
+        modId,
+        gameVersion: selectedVersion || '1.21.4',
+      })
+      await loadInstalledMods()
+    } catch (err) {
+      console.error('Install mod error:', err)
+    } finally {
+      setInstallingModId(null)
+    }
+  }
+
+  // Auto-search popular mods when catalog tab opens
+  useEffect(() => {
+    if (modTab === 'catalog' && catalogMods.length === 0) {
+      handleSearchModrinth('')
+    }
+  }, [modTab])
+
+  // 6. Custom Game Picker (Feature 1)
+  const handleAddCustomGame = async () => {
+    try {
+      const newGame = await invoke('pick_custom_game')
+      if (newGame) {
+        await loadGames()
+        setActiveGameId(newGame.id)
+      }
+    } catch (err) {
+      console.error('Pick custom game error:', err)
+    }
+  }
+
+  const handleRemoveCustomGame = async (e, id) => {
+    e.stopPropagation()
+    try {
+      await invoke('remove_custom_game', { id })
+      await loadGames()
+      if (activeGameId === id) {
+        setActiveGameId('minecraft')
+      }
+    } catch (err) {
+      console.error('Remove custom game error:', err)
+    }
+  }
+
+  // 7. Discord RPC Live Sync (Feature 2)
+  const activeGame = games.find((g) => g.id === activeGameId) || games[0] || INITIAL_MINECRAFT
+
+  useEffect(() => {
+    async function syncDiscord() {
+      try {
+        await invoke('set_discord_presence', {
+          gameName: activeGame.name,
+          status: launchStatus === 'running' ? 'playing' : 'idle',
+        })
+      } catch (err) {
+        // Discord might not be running on machine
+      }
+    }
+    syncDiscord()
+  }, [activeGameId, launchStatus])
+
+  // 8. Listen to Minecraft launch status
   useEffect(() => {
     let unlistenStatus
     let unlistenProgress
@@ -209,9 +313,6 @@ export default function App() {
       return next
     })
   }
-
-  // Active game object
-  const activeGame = games.find((g) => g.id === activeGameId) || games[0] || INITIAL_MINECRAFT
 
   // Handle Play Action
   const handleLaunch = async () => {
@@ -300,7 +401,7 @@ export default function App() {
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                 : 'bg-transparent text-slate-400 hover:bg-white/10 hover:text-white'
             }`}
-            title="Mod Manager"
+            title="Mod Manager (In-App Downloader)"
           >
             <Layers className="w-4 h-4" />
           </button>
@@ -590,12 +691,13 @@ export default function App() {
         </div>
       </main>
 
-      {/* 3. RIGHT GAME CARDS STACK (Real Installed Games Only, No Dummy Data, Friends Removed) */}
+      {/* 3. RIGHT GAME CARDS STACK (Real Installed Games + Custom Game Picker) */}
       <div className="absolute right-4 top-16 bottom-6 w-72 z-40 flex flex-col justify-between pointer-events-none">
         {/* Real Installed Games Stack */}
-        <div className="space-y-2.5 overflow-y-auto pr-1 pointer-events-auto max-h-[calc(100vh-140px)]">
+        <div className="space-y-2.5 overflow-y-auto pr-1 pointer-events-auto max-h-[calc(100vh-170px)]">
           {displayedGames.map((g) => {
             const isSelected = activeGameId === g.id
+            const isCustom = g.platform === 'custom'
             return (
               <div
                 key={g.id}
@@ -626,6 +728,16 @@ export default function App() {
                   </h4>
                 </div>
 
+                {isCustom && (
+                  <button
+                    onClick={(e) => handleRemoveCustomGame(e, g.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-all"
+                    title="Remove custom game"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
                 {isSelected && (
                   <div className="w-1.5 h-6 rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399]" />
                 )}
@@ -634,8 +746,19 @@ export default function App() {
           })}
         </div>
 
-        {/* Discover More Pill Button (Opens Modrinth / Community Store) */}
-        <div className="pt-2 pointer-events-auto">
+        {/* Action Buttons: Add Custom Game & Discover More */}
+        <div className="space-y-2 pt-2 pointer-events-auto">
+          {/* Feature 1: Add Custom Executable Button */}
+          <button
+            onClick={handleAddCustomGame}
+            className="w-full py-2 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-xs font-bold text-emerald-300 flex items-center justify-center gap-1.5 shadow-lg transition-all"
+            title="Browse and add any .exe on your PC"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>ADD CUSTOM GAME (.EXE)</span>
+          </button>
+
+          {/* Discover More Button */}
           <button
             onClick={() => openUrl('https://modrinth.com')}
             className="w-full py-2.5 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-xl border border-white/20 text-xs font-bold text-slate-200 hover:text-white flex items-center justify-center gap-1.5 shadow-xl transition-all"
@@ -647,9 +770,9 @@ export default function App() {
         </div>
       </div>
 
-      {/* 4. SLIDE-OUT MOD MANAGER DRAWER */}
+      {/* 4. SLIDE-OUT MOD MANAGER DRAWER (Feature 3: Modrinth In-App Downloader) */}
       {isModDrawerOpen && (
-        <div className="absolute right-0 top-0 bottom-0 w-80 bg-[#0c0f17]/95 backdrop-blur-2xl border-l border-white/10 p-5 z-50 flex flex-col justify-between shadow-2xl animate-in slide-in-from-right duration-200">
+        <div className="absolute right-0 top-0 bottom-0 w-96 bg-[#0c0f17]/95 backdrop-blur-2xl border-l border-white/10 p-5 z-50 flex flex-col justify-between shadow-2xl animate-in slide-in-from-right duration-200">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -666,45 +789,180 @@ export default function App() {
               </button>
             </div>
 
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Performance and optimization modpack active on Minecraft {selectedVersion}.
-            </p>
+            {/* Tabs: Installed vs Catalog */}
+            <div className="flex rounded-xl bg-black/50 p-1 border border-white/10">
+              <button
+                onClick={() => setModTab('installed')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  modTab === 'installed'
+                    ? 'bg-emerald-500/20 text-emerald-300 shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Installed ({installedMods.length})
+              </button>
+              <button
+                onClick={() => setModTab('catalog')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  modTab === 'catalog'
+                    ? 'bg-emerald-500/20 text-emerald-300 shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Modrinth Catalog
+              </button>
+            </div>
 
-            {/* Mod List */}
-            <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-180px)] pr-1">
-              {installedMods.map((m) => (
-                <div
-                  key={m.file_name}
-                  className="p-3 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between"
-                >
-                  <div>
-                    <h5 className="font-bold text-xs text-white">{m.mod_name}</h5>
-                    <span className="text-[10px] font-mono text-slate-400 block truncate max-w-[180px]">
-                      {m.file_name}
-                    </span>
+            {/* TAB 1: INSTALLED MODS */}
+            {modTab === 'installed' && (
+              <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-210px)] pr-1">
+                {installedMods.map((m) => {
+                  const fileName = m.filename || m.file_name
+                  const modName = m.name || m.mod_name
+                  return (
+                    <div
+                      key={fileName}
+                      className="p-3 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <h5 className="font-bold text-xs text-white truncate">{modName}</h5>
+                        <span className="text-[10px] font-mono text-slate-400 block truncate">
+                          {fileName}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleToggleMod(m)}
+                        className={`w-8 h-5 rounded-full transition-colors relative flex items-center px-0.5 flex-shrink-0 ${
+                          m.enabled ? 'bg-emerald-500' : 'bg-slate-700'
+                        }`}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                            m.enabled ? 'translate-x-3' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* TAB 2: MODRINTH IN-APP CATALOG & DOWNLOADER */}
+            {modTab === 'catalog' && (
+              <div className="space-y-3">
+                {/* Search Input Bar */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      placeholder="Search mods on Modrinth..."
+                      value={modSearchQuery}
+                      onChange={(e) => setModSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearchModrinth()}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-black/50 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
+                    />
                   </div>
                   <button
-                    onClick={() => handleToggleMod(m.file_name)}
-                    className={`w-8 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${
-                      m.enabled ? 'bg-emerald-500' : 'bg-slate-700'
-                    }`}
+                    onClick={() => handleSearchModrinth()}
+                    className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs"
                   >
-                    <div
-                      className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                        m.enabled ? 'translate-x-3' : 'translate-x-0'
-                      }`}
-                    />
+                    Search
                   </button>
                 </div>
-              ))}
-            </div>
+
+                {/* Catalog Results */}
+                <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-270px)] pr-1">
+                  {isSearchingMods ? (
+                    <div className="py-10 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+                      <RotateCw className="w-5 h-5 animate-spin text-emerald-400" />
+                      <span>Searching Modrinth...</span>
+                    </div>
+                  ) : catalogMods.length === 0 ? (
+                    <div className="py-10 text-center text-xs text-slate-400">
+                      No mods found. Try another search.
+                    </div>
+                  ) : (
+                    catalogMods.map((mod) => {
+                      const isInstalled = installedMods.some(
+                        (im) =>
+                          (im.name || im.mod_name || '').toLowerCase() ===
+                            mod.title.toLowerCase() ||
+                          (im.filename || '').toLowerCase().includes(mod.project_id.toLowerCase())
+                      )
+                      const isInstalling = installingModId === mod.project_id
+
+                      return (
+                        <div
+                          key={mod.project_id}
+                          className="p-3 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {mod.icon_url ? (
+                              <img
+                                src={mod.icon_url}
+                                alt={mod.title}
+                                className="w-9 h-9 rounded-lg object-cover flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-9 h-9 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                                M
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <h5 className="font-bold text-xs text-white truncate">{mod.title}</h5>
+                              <p className="text-[10px] text-slate-400 line-clamp-1">
+                                {mod.description}
+                              </p>
+                              <span className="text-[9px] font-mono text-emerald-400">
+                                {mod.downloads.toLocaleString()} DLs
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleInstallMod(mod.project_id)}
+                            disabled={isInstalled || isInstalling}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 flex-shrink-0 transition-all ${
+                              isInstalled
+                                ? 'bg-white/10 text-slate-400 cursor-default'
+                                : isInstalling
+                                ? 'bg-emerald-500/50 text-black cursor-wait'
+                                : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-md'
+                            }`}
+                          >
+                            {isInstalling ? (
+                              <>
+                                <RotateCw className="w-3 h-3 animate-spin" />
+                                <span>...</span>
+                              </>
+                            ) : isInstalled ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span>Done</span>
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-3 h-3" />
+                                <span>Install</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <button
             onClick={() => openUrl('https://modrinth.com/mods')}
             className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition-colors"
           >
-            <span>Search More on Modrinth</span>
+            <span>Open Modrinth Website</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
         </div>

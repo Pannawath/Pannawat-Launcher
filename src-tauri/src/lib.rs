@@ -12,6 +12,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             println!("[LAUNCHER-LOG] Tauri setup hook executed successfully.");
+            
+            // Initialize Discord Rich Presence in background thread
+            discord::init_discord_rpc();
+
             for (label, window) in app.webview_windows() {
                 println!("[LAUNCHER-LOG] Found window: {}", label);
                 let _ = window.show();
@@ -22,6 +26,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Auth
             auth::create_offline_session,
+            // Discord RPC
+            discord::set_discord_presence,
             // Versions
             versions::get_available_versions,
             // Profiles & Modpacks
@@ -35,6 +41,8 @@ pub fn run() {
             launch::kill_game,
             // Universal Games
             games::get_installed_games,
+            games::pick_custom_game,
+            games::remove_custom_game,
             games::launch_universal_game,
             // Mods
             mods::search_mods,

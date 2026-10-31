@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
 use tracing::info;
 
@@ -12,7 +13,37 @@ pub struct InstalledGame {
     pub description: String,
     pub launch_target: String, // steam appid, executable path, or minecraft id
     pub is_running: bool,
-    pub tag: String, // "Most Played", "Recently Played", "Installed"
+    pub tag: String, // "Most Played", "Recently Played", "Installed", "Custom"
+}
+
+fn get_custom_games_path() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("PannawatLauncher").join("custom_games.json"))
+}
+
+fn load_custom_games() -> Vec<InstalledGame> {
+    if let Some(path) = get_custom_games_path() {
+        if path.exists() {
+            if let Ok(content) = fs::read_to_string(path) {
+                if let Ok(games) = serde_json::from_str::<Vec<InstalledGame>>(&content) {
+                    return games;
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn save_custom_games(games: &[InstalledGame]) -> Result<(), String> {
+    if let Some(path) = get_custom_games_path() {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let content = serde_json::to_string_pretty(games).map_err(|e| e.to_string())?;
+        fs::write(path, content).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("Cannot resolve app data directory".into())
+    }
 }
 
 #[tauri::command]
@@ -136,7 +167,6 @@ pub async fn get_installed_games() -> Result<Vec<InstalledGame>, String> {
                     if let Ok(content) = std::fs::read_to_string(&path) {
                         if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
                             if let (Some(display_name), Some(app_name)) = (val["DisplayName"].as_str(), val["AppName"].as_str()) {
-                                // Exclude editor plugins
                                 if !display_name.contains("Plugin") && !display_name.contains("Bridge") {
                                     games.push(InstalledGame {
                                         id: format!("epic-{}", app_name),
@@ -158,13 +188,90 @@ pub async fn get_installed_games() -> Result<Vec<InstalledGame>, String> {
         }
     }
 
+    // 5. Append Custom Added Games
+    let mut custom = load_custom_games();
+    games.append(&mut custom);
+
     Ok(games)
+}
+
+#[tauri::command]
+pub async fn pick_custom_game() -> Result<Option<InstalledGame>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let output = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                r#"
+                Add-Type -AssemblyName System.Windows.Forms
+                $f = New-Object System.Windows.Forms.OpenFileDialog
+                $f.Filter = 'Executables (*.exe)|*.exe|All Files (*.*)|*.*'
+                $f.Title = 'Select Game Executable'
+                if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                    Write-Output $f.FileName
+                }
+                "#,
+            ])
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        let exe_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if exe_path.is_empty() {
+            return Ok(None);
+        }
+
+        let path_obj = PathBuf::from(&exe_path);
+        let name = path_obj
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Custom Game")
+            .to_string();
+
+        let id = format!("custom-{}", name.to_lowercase().replace(' ', "-"));
+
+        let new_game = InstalledGame {
+            id: id.clone(),
+            name: name.clone(),
+            platform: "custom".into(),
+            banner_url: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1920&q=80".into(),
+            icon_url: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=120".into(),
+            description: format!("Custom game executable located at {}", exe_path),
+            launch_target: exe_path,
+            is_running: false,
+            tag: "Custom".into(),
+        };
+
+        let mut current_custom = load_custom_games();
+        // Avoid duplicate ID
+        current_custom.retain(|g| g.id != id);
+        current_custom.push(new_game.clone());
+        save_custom_games(&current_custom)?;
+
+        Ok(Some(new_game))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn remove_custom_game(id: String) -> Result<(), String> {
+    let mut current_custom = load_custom_games();
+    current_custom.retain(|g| g.id != id);
+    save_custom_games(&current_custom)?;
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn launch_universal_game(target: String, platform: String) -> Result<(), String> {
     info!("Launching universal game: {} ({})", target, platform);
     
+    // Update Discord rich presence
+    crate::commands::discord::update_presence_playing(&target, "Playing Game");
+
     if platform == "steam" || platform == "roblox" || platform == "epic" {
         // Open URI protocol
         #[cfg(target_os = "windows")]
