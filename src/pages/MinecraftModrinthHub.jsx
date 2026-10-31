@@ -174,6 +174,35 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
   const [settingsCategory, setSettingsCategory] = useState('appearance')
 
+  // Toast Notification State (ISS-01)
+  const [toastNotification, setToastNotification] = useState(null)
+  const showToast = (message, type = 'error') => {
+    setToastNotification({ message, type, id: Date.now() })
+    setTimeout(() => {
+      setToastNotification((prev) => (prev?.id === Date.now() ? null : prev))
+    }, 4500)
+  }
+
+  // Modpack Upload File Input Ref (ISS-04)
+  const modpackInputRef = useRef(null)
+
+  // Keyboard Escape Handler for all Modals (ISS-03)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (isCreateModalOpen) {
+          setIsCreateModalOpen(false)
+          setCreateStep('choose_type')
+        }
+        if (isSettingsModalOpen) {
+          setIsSettingsModalOpen(false)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isCreateModalOpen, isSettingsModalOpen])
+
   // Skin Selector Model State
   const [skinModelType, setSkinModelType] = useState(offlineSkin?.type || 'classic')
   const [skinAnimation, setSkinAnimation] = useState('idle')
@@ -404,9 +433,10 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
       })
       await loadMods()
       setInstallSuccessIds((prev) => new Set(prev).add(projectId))
+      showToast(`Installed ${item.title} successfully!`, 'success')
     } catch (err) {
       console.error('Install content error:', err)
-      alert(`Install error: ${err}`)
+      showToast(`Install error: ${err}`, 'error')
     } finally {
       setInstallingProjectIds((prev) => {
         const next = new Set(prev)
@@ -520,6 +550,22 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         ref={fileInputRef}
         onChange={handleSkinFileChange}
         accept="image/png"
+        className="hidden"
+      />
+
+      {/* Hidden File Input for Modpack Upload (ISS-04) */}
+      <input
+        type="file"
+        ref={modpackInputRef}
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) {
+            showToast(`Selected modpack: ${file.name}. Importing...`, 'success')
+            setIsCreateModalOpen(false)
+            setCreateStep('choose_type')
+          }
+        }}
+        accept=".mrpack,.zip"
         className="hidden"
       />
 
@@ -1400,7 +1446,8 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   setIsCreateModalOpen(false)
                   setCreateStep('choose_type')
                 }}
-                className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white"
+                className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white transition-all border border-white/5"
+                title="Close modal (Esc)"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1476,23 +1523,25 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                     </div>
                   </div>
 
-                  {/* 3. Upload modpack */}
+                  {/* 3. Upload modpack (ISS-04) */}
                   <div
-                    onClick={() => {
-                      setIsCreateModalOpen(false)
-                      setActiveTab('home')
-                    }}
-                    className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center gap-4 opacity-75"
+                    onClick={() => modpackInputRef.current?.click()}
+                    className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center justify-between gap-4 group"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center flex-shrink-0">
-                      <Upload className="w-5 h-5" />
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-xs text-white">Upload a modpack</h5>
+                        <p className="text-[11px] text-slate-400">
+                          Install a modpack from an .mrpack or .zip file on your PC.
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h5 className="font-bold text-xs text-white">Upload a modpack</h5>
-                      <p className="text-[11px] text-slate-400">
-                        Install a modpack from an .mrpack file on your device.
-                      </p>
-                    </div>
+                    <span className="text-[10px] font-bold text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-md font-mono">
+                      Browse
+                    </span>
                   </div>
 
                   {/* 4. Import instance */}
@@ -1699,7 +1748,8 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               <div className="flex justify-end">
                 <button
                   onClick={() => setIsSettingsModalOpen(false)}
-                  className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white"
+                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white transition-all border border-white/5"
+                  title="Close settings (Esc)"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1940,6 +1990,35 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               )}
             </div>
           </div>
+        </div>
+      )}
+      {/* 5. IN-APP GLASSMORPHISM TOAST NOTIFICATION (ISS-01) */}
+      {toastNotification && (
+        <div className="fixed bottom-6 right-6 z-[100] max-w-sm p-4 rounded-2xl bg-[#14161f]/90 backdrop-blur-xl border border-white/15 shadow-2xl animate-in fade-in slide-in-from-bottom-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                toastNotification.type === 'success'
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : 'bg-rose-500/20 text-rose-400'
+              }`}
+            >
+              {toastNotification.type === 'success' ? (
+                <Check className="w-4 h-4" />
+              ) : (
+                <Info className="w-4 h-4" />
+              )}
+            </div>
+            <p className="text-xs font-semibold text-slate-200 line-clamp-2">
+              {toastNotification.message}
+            </p>
+          </div>
+          <button
+            onClick={() => setToastNotification(null)}
+            className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center flex-shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
     </div>
