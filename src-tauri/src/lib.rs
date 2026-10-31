@@ -1,6 +1,6 @@
 mod commands;
 
-use commands::{auth, discord, download, launch, mods, profile, versions};
+use commands::{auth, discord, download, games, launch, mods, profile, versions};
 
 use tauri::Manager;
 
@@ -33,6 +33,9 @@ pub fn run() {
             // Launch
             launch::launch_game,
             launch::kill_game,
+            // Universal Games
+            games::get_installed_games,
+            games::launch_universal_game,
             // Mods
             mods::search_mods,
             mods::list_installed_mods,
