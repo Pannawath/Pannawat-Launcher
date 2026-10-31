@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import MinecraftModrinthHub from './pages/MinecraftModrinthHub'
 import {
   Play,
   RotateCw,
@@ -67,6 +68,7 @@ export default function App() {
     }
   })
   const [onlyFavorites, setOnlyFavorites] = useState(false)
+  const [currentView, setCurrentView] = useState('launcher') // 'launcher' | 'minecraft_modrinth'
 
   // Drawer & Modal States
   const [isModDrawerOpen, setIsModDrawerOpen] = useState(false)
@@ -363,6 +365,10 @@ export default function App() {
     ? games.filter((g) => favorites.includes(g.id))
     : games
 
+  if (currentView === 'minecraft_modrinth') {
+    return <MinecraftModrinthHub onBackToLauncher={() => setCurrentView('launcher')} />
+  }
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#07090e] text-slate-100 font-sans select-none flex">
       {/* 1. LEFT ULTRA-COMPACT FLOATING ICON DOCK */}
@@ -648,6 +654,20 @@ export default function App() {
               />
               <span>{favorites.includes(activeGame.id) ? 'FAVORITE' : 'ADD TO FAVORITE'}</span>
             </button>
+
+            {/* Dedicated Minecraft Modrinth Hub Button */}
+            {activeGame.platform === 'minecraft' && (
+              <button
+                onClick={() => setCurrentView('minecraft_modrinth')}
+                className="flex items-center gap-2.5 px-6 py-3.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 backdrop-blur-xl border border-emerald-400/50 text-xs font-black text-emerald-300 shadow-xl shadow-emerald-500/10 transition-all hover:scale-105 active:scale-95"
+                title="Open Dedicated Minecraft Modrinth Management Hub"
+              >
+                <div className="w-4 h-4 rounded border border-emerald-400 flex items-center justify-center font-mono font-black text-[9px] text-emerald-300">
+                  M
+                </div>
+                <span>MINECRAFT SETTINGS (MODRINTH)</span>
+              </button>
+            )}
           </div>
 
           {/* Minecraft Download Progress Bar */}
