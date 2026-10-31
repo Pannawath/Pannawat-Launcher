@@ -95,3 +95,40 @@ pub async fn install_mod(
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn install_mod_file_url(
+    profile_id: String,
+    download_url: String,
+    filename: String,
+) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    let mods_dir = get_profile_mods_dir(&profile_id)?;
+    let dest = mods_dir.join(&filename);
+
+    let res = client
+        .get(&download_url)
+        .header("User-Agent", "PannawatLauncher/0.1.0")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        return Err(format!("Download failed with status: {}", res.status()));
+    }
+
+    let bytes = res.bytes().await.map_err(|e| e.to_string())?;
+    fs::write(dest, bytes).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_installed_mod(profile_id: String, filename: String) -> Result<(), String> {
+    let mods_dir = get_profile_mods_dir(&profile_id)?;
+    let target = mods_dir.join(&filename);
+    if target.exists() {
+        fs::remove_file(target).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}

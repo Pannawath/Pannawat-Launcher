@@ -38,6 +38,9 @@ pub fn run() {
             profile::import_profile,
             profile::open_instance_folder,
             profile::open_mods_folder,
+            profile::list_instance_files,
+            profile::delete_instance_file,
+            profile::get_instance_logs,
             // Launch
             launch::launch_game,
             launch::kill_game,
@@ -51,6 +54,8 @@ pub fn run() {
             mods::list_installed_mods,
             mods::toggle_mod,
             mods::install_mod,
+            mods::install_mod_file_url,
+            mods::delete_installed_mod,
             // Download / Java
             download::check_java,
             download::download_java,

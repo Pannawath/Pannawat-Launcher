@@ -103,6 +103,70 @@ pub fn open_mods_folder(profile_id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct InstanceFileEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub path: String,
+}
+
+#[tauri::command]
+pub fn list_instance_files(profile_id: String, subpath: Option<String>) -> Result<Vec<InstanceFileEntry>, String> {
+    let dir = get_profiles_dir()?;
+    let mut target = dir.join(&profile_id);
+    if let Some(sub) = subpath {
+        let clean_sub = sub.trim_start_matches(|c| c == '/' || c == '\\');
+        target = target.join(clean_sub);
+    }
+    fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+
+    let mut entries = Vec::new();
+    if let Ok(read_dir) = fs::read_dir(&target) {
+        for entry in read_dir.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            let rel_path = entry.path().strip_prefix(&dir.join(&profile_id))
+                .unwrap_or(&entry.path())
+                .to_string_lossy()
+                .replace('\\', "/");
+            entries.push(InstanceFileEntry {
+                name,
+                is_dir,
+                size,
+                path: rel_path,
+            });
+        }
+    }
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.cmp(&b.name)));
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn delete_instance_file(profile_id: String, relative_path: String) -> Result<(), String> {
+    let dir = get_profiles_dir()?;
+    let clean = relative_path.trim_start_matches(|c| c == '/' || c == '\\');
+    let target = dir.join(&profile_id).join(clean);
+    if target.is_dir() {
+        fs::remove_dir_all(target).map_err(|e| e.to_string())?;
+    } else if target.is_file() {
+        fs::remove_file(target).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_instance_logs(profile_id: String) -> Result<String, String> {
+    let dir = get_profiles_dir()?;
+    let log_path = dir.join(&profile_id).join("logs").join("latest.log");
+    if log_path.exists() {
+        fs::read_to_string(log_path).map_err(|e| e.to_string())
+    } else {
+        Ok(format!("[INFO] No log file created yet for profile: {}", profile_id))
+    }
+}
+
 #[tauri::command]
 pub fn delete_profile(profile_id: String) -> Result<(), String> {
     let dir = get_profiles_dir()?;
