@@ -37,6 +37,7 @@ import {
   FileCode,
   Box,
   MoreVertical,
+  Filter,
 } from 'lucide-react'
 import { useSettingsStore } from '../store/settingsStore'
 import { useProfileStore } from '../store/profileStore'
@@ -141,11 +142,14 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const [navHistory, setNavHistory] = useState(['home'])
   const [historyIndex, setHistoryIndex] = useState(0)
 
-  // Discover Content
-  const [discoverType, setDiscoverType] = useState('modpacks')
+  // Discover Content (Modrinth API Hub)
+  const [discoverType, setDiscoverType] = useState('modpacks') // 'modpacks' | 'mods' | 'resourcepacks' | 'datapacks' | 'shaders'
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [isSearching, setIsSearching] = useState(false)
+  const [installingProjectIds, setInstallingProjectIds] = useState(new Set())
+  const [installSuccessIds, setInstallSuccessIds] = useState(new Set())
+  const [sortBy, setSortBy] = useState('relevance') // 'relevance' | 'downloads' | 'follows' | 'newest' | 'updated'
 
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -332,7 +336,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     }
   }
 
-  // Search Modrinth API
+  // Search Modrinth API with facets & sorting
   const handleSearch = async (query = searchQuery) => {
     setIsSearching(true)
     try {
@@ -341,7 +345,9 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         facets.push('["project_type:modpack"]')
       } else if (discoverType === 'mods') {
         facets.push('["project_type:mod"]')
-        facets.push('["categories:fabric"]')
+        if (activeInstance.fabric_version) {
+          facets.push('["categories:fabric"]')
+        }
       } else if (discoverType === 'resourcepacks') {
         facets.push('["project_type:resourcepack"]')
       } else if (discoverType === 'shaders') {
@@ -353,7 +359,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
       const facetString = `[${facets.join(',')}]`
       const url = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(
         query
-      )}&facets=${encodeURIComponent(facetString)}&limit=15`
+      )}&facets=${encodeURIComponent(facetString)}&index=${sortBy}&limit=20`
 
       const res = await fetch(url)
       const data = await res.json()
@@ -367,8 +373,34 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   }
 
   useEffect(() => {
-    handleSearch('')
-  }, [discoverType])
+    handleSearch(searchQuery)
+  }, [discoverType, sortBy])
+
+  // Direct 1-Click Install to Active Instance mods/ directory
+  const handleInstallContent = async (item) => {
+    const projectId = item.project_id
+    if (installingProjectIds.has(projectId)) return
+
+    setInstallingProjectIds((prev) => new Set(prev).add(projectId))
+    try {
+      await invoke('install_mod', {
+        profileId: activeInstance.id,
+        modId: projectId,
+        gameVersion: activeInstance.mc_version,
+      })
+      await loadMods()
+      setInstallSuccessIds((prev) => new Set(prev).add(projectId))
+    } catch (err) {
+      console.error('Install content error:', err)
+      alert(`Install error: ${err}`)
+    } finally {
+      setInstallingProjectIds((prev) => {
+        const next = new Set(prev)
+        next.delete(projectId)
+        return next
+      })
+    }
+  }
 
   // Custom Skin Upload
   const handleSkinFileChange = (e) => {
@@ -826,30 +858,40 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           </div>
         )}
 
-        {/* VIEW 2: DISCOVER CONTENT PAGE */}
+        {/* VIEW 2: DISCOVER CONTENT PAGE (Matching Image 2: Modrinth Catalog Hub) */}
         {activeTab === 'discover' && (
           <div className="flex-1 flex flex-col overflow-hidden p-6 space-y-4">
             {/* Top Content Pills */}
-            <div className="flex items-center gap-2 border-b border-white/10 pb-3">
-              {[
-                { id: 'modpacks', label: 'Modpacks' },
-                { id: 'mods', label: 'Mods' },
-                { id: 'resourcepacks', label: 'Resource Packs' },
-                { id: 'datapacks', label: 'Data Packs' },
-                { id: 'shaders', label: 'Shaders' },
-              ].map((pill) => (
-                <button
-                  key={pill.id}
-                  onClick={() => setDiscoverType(pill.id)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    discoverType === pill.id
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                      : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {pill.label}
-                </button>
-              ))}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                {[
+                  { id: 'modpacks', label: 'Modpacks' },
+                  { id: 'mods', label: 'Mods' },
+                  { id: 'resourcepacks', label: 'Resource Packs' },
+                  { id: 'datapacks', label: 'Data Packs' },
+                  { id: 'shaders', label: 'Shaders' },
+                ].map((pill) => (
+                  <button
+                    key={pill.id}
+                    onClick={() => setDiscoverType(pill.id)}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      discoverType === pill.id
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                        : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Target Instance Indicator */}
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span>Installing to:</span>
+                <span className="font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20 font-bold">
+                  {activeInstance.name} ({activeInstance.mc_version})
+                </span>
+              </div>
             </div>
 
             {/* Search and Sort Toolbar */}
@@ -866,11 +908,23 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                 />
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span>Target Instance:</span>
-                <span className="font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20 font-bold">
-                  {activeInstance.name} ({activeInstance.mc_version})
+              {/* Sort By Dropdown */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Filter className="w-3.5 h-3.5" />
+                  Sort:
                 </span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-[#0c0d10] border border-white/10 text-xs font-bold text-slate-300 focus:outline-none cursor-pointer"
+                >
+                  <option value="relevance" className="bg-[#14161b]">Relevance</option>
+                  <option value="downloads" className="bg-[#14161b]">Most Downloads</option>
+                  <option value="follows" className="bg-[#14161b]">Most Follows</option>
+                  <option value="newest" className="bg-[#14161b]">Newest</option>
+                  <option value="updated" className="bg-[#14161b]">Recently Updated</option>
+                </select>
               </div>
             </div>
 
@@ -887,11 +941,14 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                 </div>
               ) : (
                 searchResults.map((item) => {
-                  const isInstalled = installedMods.some(
-                    (im) =>
-                      (im.name || im.mod_name || '').toLowerCase() === item.title.toLowerCase() ||
-                      (im.filename || '').toLowerCase().includes(item.project_id.toLowerCase())
-                  )
+                  const isInstalled =
+                    installSuccessIds.has(item.project_id) ||
+                    installedMods.some(
+                      (im) =>
+                        (im.name || im.mod_name || '').toLowerCase() === item.title.toLowerCase() ||
+                        (im.filename || '').toLowerCase().includes(item.project_id.toLowerCase())
+                    )
+                  const isInstalling = installingProjectIds.has(item.project_id)
 
                   return (
                     <div
@@ -914,30 +971,52 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                         <div className="space-y-1 min-w-0">
                           <h4 className="font-bold text-sm text-white truncate flex items-center gap-2">
                             <span>{item.title}</span>
+                            <span className="text-[10px] text-slate-500 font-normal">
+                              by {item.author || 'Modrinth Creator'}
+                            </span>
                           </h4>
                           <p className="text-xs text-slate-400 line-clamp-1">
                             {item.description}
                           </p>
                           <div className="flex items-center gap-2 pt-1 text-[10px] text-slate-400">
+                            {item.client_side && (
+                              <span className="px-2 py-0.5 rounded-md bg-white/5 font-mono text-cyan-400">
+                                {item.client_side}
+                              </span>
+                            )}
                             <span className="px-2 py-0.5 rounded-md bg-white/5 font-mono text-emerald-400">
-                              Fabric
+                              {activeInstance.fabric_version ? 'Fabric' : 'Vanilla'}
                             </span>
                             <span className="px-2 py-0.5 rounded-md bg-white/5 font-mono">
                               {item.downloads.toLocaleString()} Downloads
                             </span>
+                            {item.follows && (
+                              <span className="px-2 py-0.5 rounded-md bg-white/5 font-mono text-amber-400">
+                                {item.follows.toLocaleString()} Followers
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
 
                       {/* 1-Click Install Button */}
                       <button
+                        onClick={() => handleInstallContent(item)}
+                        disabled={isInstalled || isInstalling}
                         className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 flex-shrink-0 transition-all ${
                           isInstalled
                             ? 'bg-white/10 text-slate-400 cursor-default'
+                            : isInstalling
+                            ? 'bg-emerald-500/50 text-black cursor-wait'
                             : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20 active:scale-95'
                         }`}
                       >
-                        {isInstalled ? (
+                        {isInstalling ? (
+                          <>
+                            <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Installing...</span>
+                          </>
+                        ) : isInstalled ? (
                           <>
                             <Check className="w-3.5 h-3.5 text-emerald-400" />
                             <span>Installed</span>
@@ -1184,7 +1263,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           </div>
         )}
 
-        {/* VIEW 4: INSTANCES LIBRARY (All Instances Grid & Management) */}
+        {/* VIEW 4: INSTANCES LIBRARY */}
         {activeTab === 'instances' && (
           <div className="flex-1 p-6 overflow-y-auto space-y-6">
             <div className="flex items-center justify-between border-b border-white/5 pb-4">
@@ -1294,7 +1373,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         )}
       </div>
 
-      {/* 3. CREATE INSTANCE MODAL (Matching Image 4 & Full Custom Setup) */}
+      {/* 3. CREATE INSTANCE MODAL */}
       {isCreateModalOpen && (
         <div className="absolute inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in">
           <div className="w-full max-w-lg rounded-2xl bg-[#14161b] border border-white/15 p-6 shadow-2xl space-y-5">
