@@ -1,13 +1,13 @@
-use anyhow::Context;
 use auth::OfflineSession;
 use game_runtime::{ensure_java_runtime, prepare_game_environment};
 use jvm_builder::{spawn_game, JvmConfig};
-use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
+use crate::commands::discord;
 
 #[derive(serde::Deserialize)]
 pub struct LaunchRequest {
     pub profile_id: String,
+    pub profile_name: Option<String>,
     pub username: String,
     pub mc_version: String,
     pub fabric_version: Option<String>,
@@ -104,7 +104,7 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         max_ram_mb: req.max_ram_mb.unwrap_or(4096),
         extra_flags: vec![],
         game_dir: profile_dir,
-        version_id: req.mc_version,
+        version_id: req.mc_version.clone(),
         username: session.username,
         uuid: session.uuid,
         access_token: session.access_token,
@@ -127,6 +127,9 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         },
     );
 
+    let p_name = req.profile_name.unwrap_or_else(|| "Default Profile".into());
+    discord::update_presence_playing(&p_name, &req.mc_version);
+
     let mut child = spawn_game(&jvm_cfg)
         .await
         .map_err(|e| format!("Failed to spawn game process: {:#}", e))?;
@@ -135,6 +138,7 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
     tokio::spawn(async move {
         let status = child.wait().await;
         tracing::info!("Game process exited with: {:?}", status);
+        discord::update_presence_idle();
     });
 
     let _ = app.emit(

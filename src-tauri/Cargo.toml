@@ -32,6 +32,7 @@ downloader     = { path = "../crates/downloader" }
 mod-manager    = { path = "../crates/mod-manager" }
 jvm-builder    = { path = "../crates/jvm-builder" }
 game-runtime   = { path = "../crates/game-runtime" }
+discord-rich-presence = "1.1.0"
 
 [profile.release]
 codegen-units = 1

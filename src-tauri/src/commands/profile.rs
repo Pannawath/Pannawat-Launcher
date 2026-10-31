@@ -1,4 +1,4 @@
-use game_runtime::Profile;
+use game_runtime::{export_profile_zip, import_profile_zip, Profile};
 use std::fs;
 use std::path::PathBuf;
 
@@ -29,7 +29,6 @@ pub fn list_profiles() -> Result<Vec<Profile>, String> {
         }
     }
 
-    // Create a default profile if none exists
     if profiles.is_empty() {
         let base_data = dirs::data_dir()
             .ok_or_else(|| "Cannot find APPDATA".to_string())?
@@ -74,4 +73,20 @@ pub fn delete_profile(profile_id: String) -> Result<(), String> {
         fs::remove_dir_all(target).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn export_profile(profile_id: String, output_path: String) -> Result<(), String> {
+    let dir = get_profiles_dir()?;
+    let profile_dir = dir.join(&profile_id);
+    export_profile_zip(&profile_dir, &PathBuf::from(output_path)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn import_profile(zip_path: String, profile_name: String, mc_version: String) -> Result<Profile, String> {
+    let profile = create_profile(profile_name, mc_version)?;
+    let dir = get_profiles_dir()?;
+    let profile_dir = dir.join(&profile.id);
+    import_profile_zip(&PathBuf::from(zip_path), &profile_dir).map_err(|e| e.to_string())?;
+    Ok(profile)
 }
