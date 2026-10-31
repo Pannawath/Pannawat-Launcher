@@ -1,4 +1,7 @@
+use mod_manager::InstalledMod;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchModsRequest {
@@ -8,19 +11,73 @@ pub struct SearchModsRequest {
     pub limit: u32,
 }
 
+fn get_profile_mods_dir(profile_id: &str) -> Result<PathBuf, String> {
+    let base = dirs::data_dir()
+        .ok_or_else(|| "Cannot find APPDATA directory".to_string())?
+        .join("PannawatLauncher")
+        .join("profiles")
+        .join(profile_id)
+        .join("mods");
+    fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    Ok(base)
+}
+
 #[tauri::command]
 pub async fn search_mods(req: SearchModsRequest) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
-    match req.source.as_str() {
-        "modrinth" => {
-            let results =
-                mod_manager::modrinth::search(&client, &req.query, &req.game_version, req.limit)
-                    .await
-                    .map_err(|e| e.to_string())?;
-            Ok(serde_json::to_value(results).unwrap())
+    let results = mod_manager::modrinth::search(&client, &req.query, &req.game_version, req.limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::to_value(results).map_err(|e| e.to_string())?)
+}
+
+#[tauri::command]
+pub async fn list_installed_mods(profile_id: String) -> Result<Vec<InstalledMod>, String> {
+    let mods_dir = get_profile_mods_dir(&profile_id)?;
+    let mut mods = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(mods_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                let is_jar = ext == "jar";
+                let is_disabled = ext == "disabled";
+                if is_jar || is_disabled {
+                    let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                    let name = filename.replace(".jar", "").replace(".disabled", "");
+                    mods.push(InstalledMod {
+                        id: name.clone(),
+                        name,
+                        version: "".into(),
+                        source: mod_manager::ModSource::Local,
+                        filename,
+                        sha1: None,
+                        enabled: is_jar,
+                        icon_url: None,
+                        dependencies: vec![],
+                    });
+                }
+            }
         }
-        _ => Err("Source not supported yet".into()),
     }
+
+    Ok(mods)
+}
+
+#[tauri::command]
+pub async fn toggle_mod(profile_id: String, filename: String, enable: bool) -> Result<(), String> {
+    let mods_dir = get_profile_mods_dir(&profile_id)?;
+    let current_path = mods_dir.join(&filename);
+
+    if enable && filename.ends_with(".disabled") {
+        let new_name = filename.trim_end_matches(".disabled");
+        fs::rename(current_path, mods_dir.join(new_name)).map_err(|e| e.to_string())?;
+    } else if !enable && filename.ends_with(".jar") {
+        let new_name = format!("{}.disabled", filename);
+        fs::rename(current_path, mods_dir.join(new_name)).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -29,7 +86,12 @@ pub async fn install_mod(
     mod_id: String,
     game_version: String,
 ) -> Result<(), String> {
-    // TODO: download mod jar into profile mods folder
-    tracing::info!("Install mod {mod_id} for profile {profile_id} @ {game_version}");
+    let client = reqwest::Client::new();
+    let mods_dir = get_profile_mods_dir(&profile_id)?;
+
+    mod_manager::install_modrinth_mod(&client, &mod_id, &game_version, &mods_dir, |_| {})
+        .await
+        .map_err(|e| format!("Mod installation error: {:#}", e))?;
+
     Ok(())
 }

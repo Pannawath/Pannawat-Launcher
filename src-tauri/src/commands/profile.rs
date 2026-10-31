@@ -1,24 +1,77 @@
 use game_runtime::Profile;
+use std::fs;
+use std::path::PathBuf;
+
+fn get_profiles_dir() -> Result<PathBuf, String> {
+    let base = dirs::data_dir()
+        .ok_or_else(|| "Cannot find APPDATA directory".to_string())?
+        .join("PannawatLauncher")
+        .join("profiles");
+    fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    Ok(base)
+}
 
 #[tauri::command]
 pub fn list_profiles() -> Result<Vec<Profile>, String> {
-    // TODO: read from %APPDATA%\PannawatLauncher\profiles\
-    Ok(vec![])
+    let dir = get_profiles_dir()?;
+    let mut profiles = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let config_path = entry.path().join("profile.json");
+            if config_path.exists() {
+                if let Ok(content) = fs::read_to_string(&config_path) {
+                    if let Ok(profile) = serde_json::from_str::<Profile>(&content) {
+                        profiles.push(profile);
+                    }
+                }
+            }
+        }
+    }
+
+    // Create a default profile if none exists
+    if profiles.is_empty() {
+        let base_data = dirs::data_dir()
+            .ok_or_else(|| "Cannot find APPDATA".to_string())?
+            .join("PannawatLauncher");
+        let default_profile = Profile::new("Default Profile", "1.21.4", base_data);
+        let profile_dir = dir.join(&default_profile.id);
+        fs::create_dir_all(&profile_dir).map_err(|e| e.to_string())?;
+        let _ = fs::write(
+            profile_dir.join("profile.json"),
+            serde_json::to_string_pretty(&default_profile).unwrap(),
+        );
+        profiles.push(default_profile);
+    }
+
+    Ok(profiles)
 }
 
 #[tauri::command]
 pub fn create_profile(name: String, mc_version: String) -> Result<Profile, String> {
-    let base = dirs::data_dir()
-        .ok_or("Cannot find data dir")?
+    let dir = get_profiles_dir()?;
+    let base_data = dirs::data_dir()
+        .ok_or_else(|| "Cannot find APPDATA".to_string())?
         .join("PannawatLauncher");
-    let profile = Profile::new(name, mc_version, base);
-    // TODO: persist to JSON
+
+    let profile = Profile::new(name, mc_version, base_data);
+    let profile_dir = dir.join(&profile.id);
+    fs::create_dir_all(&profile_dir).map_err(|e| e.to_string())?;
+    fs::write(
+        profile_dir.join("profile.json"),
+        serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+
     Ok(profile)
 }
 
 #[tauri::command]
 pub fn delete_profile(profile_id: String) -> Result<(), String> {
-    // TODO: remove profile folder + JSON entry
-    tracing::info!("Delete profile {profile_id}");
+    let dir = get_profiles_dir()?;
+    let target = dir.join(&profile_id);
+    if target.exists() {
+        fs::remove_dir_all(target).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }

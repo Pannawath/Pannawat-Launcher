@@ -18,6 +18,8 @@ pub fn run() {
             launch::kill_game,
             // Mods
             mods::search_mods,
+            mods::list_installed_mods,
+            mods::toggle_mod,
             mods::install_mod,
             // Download / Java
             download::check_java,
