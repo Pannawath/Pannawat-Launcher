@@ -2,12 +2,23 @@ mod commands;
 
 use commands::{auth, discord, download, launch, mods, profile, versions};
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    discord::init_discord_rpc();
+    println!("[LAUNCHER-LOG] Initializing Pannawat Launcher...");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            println!("[LAUNCHER-LOG] Tauri setup hook executed successfully.");
+            for (label, window) in app.webview_windows() {
+                println!("[LAUNCHER-LOG] Found window: {}", label);
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Auth
             auth::create_offline_session,

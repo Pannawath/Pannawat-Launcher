@@ -1,6 +1,7 @@
 [package]
 name = "pannawat-launcher"
 version = "0.1.0"
+default-run = "pannawat-launcher"
 description = "Pannawat Launcher — Custom Minecraft Launcher with Fabric, offline auth, and performance mods"
 authors = ["Pannawath"]
 edition = "2021"

@@ -28,7 +28,6 @@ pub fn build_args(cfg: &JvmConfig) -> Vec<String> {
     let mut args: Vec<String> = vec![
         // Performance GC
         "-XX:+UseZGC".into(),
-        "-XX:+ZGenerational".into(),
         "-XX:+AlwaysPreTouch".into(),
         "-XX:+DisableExplicitGC".into(),
         "-Xss1M".into(),
