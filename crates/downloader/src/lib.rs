@@ -1,3 +1,6 @@
+pub mod extract;
+
+pub use extract::{extract_zip, find_java_binary};
 use anyhow::{Context, Result};
 use sha1::{Digest, Sha1};
 use std::path::PathBuf;
@@ -34,8 +37,6 @@ pub async fn verify_sha1(path: &PathBuf, expected: &str) -> Result<bool> {
 
 /// Check available disk space (cross-platform stub — Windows impl via winapi)
 pub fn available_disk_bytes(path: &PathBuf) -> Result<u64> {
-    // TODO: use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW
-    // Stub returning u64::MAX until platform impl added
     let _ = path;
     Ok(u64::MAX)
 }

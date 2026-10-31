@@ -12,3 +12,4 @@ reqwest = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+downloader = { path = "../downloader" }

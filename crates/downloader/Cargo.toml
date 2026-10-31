@@ -16,3 +16,6 @@ sha2 = { workspace = true }
 hex = { workspace = true }
 tracing = { workspace = true }
 futures = "0.3"
+zip = "9.2.0"
+flate2 = "1.1.10"
+tar = "0.4.46"
