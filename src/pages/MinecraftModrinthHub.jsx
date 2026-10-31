@@ -5,7 +5,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   Play,
   Compass,
-  Shirt,
   Layers,
   Plus,
   Settings as SettingsIcon,
@@ -17,47 +16,24 @@ import {
   Check,
   RotateCw,
   X,
-  ExternalLink,
-  Cpu,
   Minus,
   Maximize2,
   FolderOpen,
-  Sparkles,
   Info,
   Square,
-  Shield,
   Upload,
   User,
   Trash2,
-  CheckCircle2,
-  Clock,
-  HardDrive,
-  Monitor,
-  Palette,
-  FileCode,
-  Box,
-  MoreVertical,
   Filter,
-  FileText,
-  Terminal,
   Folder,
   File,
   RefreshCw,
-  Sliders,
+  Box,
+  Terminal,
   ChevronDown,
 } from 'lucide-react'
 import { useSettingsStore } from '../store/settingsStore'
 import { useProfileStore } from '../store/profileStore'
-
-// Default Skins list
-const OFFICIAL_DEFAULT_SKINS = [
-  { id: 'steve', name: 'Steve', type: 'classic', url: 'https://textures.minecraft.net/texture/1a4af718455d4aab528e7a61f86fa25e6a369d1768dcb13f7df319a71824765', thumb: 'https://raw.githubusercontent.com/PrismLauncher/PrismLauncher/develop/launcher/resources/multimc/icons/instances/steve.png' },
-  { id: 'alex', name: 'Alex', type: 'slim', url: 'https://textures.minecraft.net/texture/2eb916298692f0224d455d312de8bf404fbebe2a559d3326177114b0b1ff33b8', thumb: 'https://raw.githubusercontent.com/PrismLauncher/PrismLauncher/develop/launcher/resources/multimc/icons/instances/alex.png' },
-  { id: 'noor', name: 'Noor', type: 'slim', url: 'https://textures.minecraft.net/texture/2d8fdf0b51f7bb9c2a71d37452d3a372eb0f171542f4c7f551b88e16fa9bf25e', thumb: 'https://static.wikia.nocookie.net/minecraft_gamepedia/images/4/42/Noor_skin.png' },
-  { id: 'sunny', name: 'Sunny', type: 'classic', url: 'https://textures.minecraft.net/texture/644788c6c9a7ceec816432b07e5fbf930eb444ee03f83120150d6ffcb37e7215', thumb: 'https://static.wikia.nocookie.net/minecraft_gamepedia/images/3/30/Sunny_skin.png' },
-  { id: 'ari', name: 'Ari', type: 'classic', url: 'https://textures.minecraft.net/texture/f140682121300977ee47683c3167df663dffbb309391ab2d5c3f39a79fa72be', thumb: 'https://static.wikia.nocookie.net/minecraft_gamepedia/images/7/7b/Ari_skin.png' },
-  { id: 'zuri', name: 'Zuri', type: 'classic', url: 'https://textures.minecraft.net/texture/e55e3a8fa6a6fbb2a67e812f86538c2323a2f7c00628d0295fcfa4ebac370f14', thumb: 'https://static.wikia.nocookie.net/minecraft_gamepedia/images/8/86/Zuri_skin.png' },
-]
 
 export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const {
@@ -77,22 +53,11 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     setFullscreen,
     launcherBehavior,
     setLauncherBehavior,
-    theme,
-    setTheme,
-    advancedRendering,
-    setAdvancedRendering,
-    discordRpc,
-    setDiscordRpc,
   } = useSettingsStore()
 
   const {
     offlineUsername,
     setOfflineUsername,
-    offlineSkin,
-    setOfflineSkin,
-    savedCustomSkins,
-    addCustomSkin,
-    removeCustomSkin,
     profiles,
     setProfiles,
     activeProfileId,
@@ -100,7 +65,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     getActiveProfile,
   } = useProfileStore()
 
-  // Navigation: 'home' | 'discover' | 'skins' | 'instances'
+  // Navigation: 'home' | 'discover' | 'instances'
   const [activeTab, setActiveTab] = useState('home')
   const [navHistory, setNavHistory] = useState(['home'])
   const [historyIndex, setHistoryIndex] = useState(0)
@@ -133,6 +98,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const [newInstanceLoader, setNewInstanceLoader] = useState('fabric')
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
   const [settingsCategory, setSettingsCategory] = useState('appearance')
+  const [isVersionPickerOpen, setIsVersionPickerOpen] = useState(false)
 
   // Toast Notification
   const [toastNotification, setToastNotification] = useState(null)
@@ -145,10 +111,8 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
   // Modpack Upload File Input Ref
   const modpackInputRef = useRef(null)
-  const skinFileInputRef = useRef(null)
 
-  // Skin Selector Model State
-  const [skinModelType, setSkinModelType] = useState(offlineSkin?.type || 'classic')
+  // Offline Player Name Edit
   const [isEditingUsername, setIsEditingUsername] = useState(false)
   const [tempUsername, setTempUsername] = useState(offlineUsername)
 
@@ -164,6 +128,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         if (selectedProject) setSelectedProject(null)
+        if (isVersionPickerOpen) setIsVersionPickerOpen(false)
         if (isCreateModalOpen) {
           setIsCreateModalOpen(false)
           setCreateStep('choose_type')
@@ -173,7 +138,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isCreateModalOpen, isSettingsModalOpen, selectedProject])
+  }, [isCreateModalOpen, isSettingsModalOpen, selectedProject, isVersionPickerOpen])
 
   // Navigation handlers
   const navigateTo = (tab) => {
@@ -231,25 +196,41 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     loadProfiles()
   }, [])
 
-  // Load Minecraft Versions
-  useEffect(() => {
-    async function fetchVersions() {
-      try {
-        const list = await invoke('get_available_versions')
-        setVersions(list || [])
-      } catch {
-        setVersions([
-          { id: '26.3', type: 'snapshot' },
-          { id: '1.21.4', type: 'release' },
-          { id: '1.21.3', type: 'release' },
-          { id: '1.21.1', type: 'release' },
-          { id: '1.20.1', type: 'release' },
-          { id: '1.19.2', type: 'release' },
-          { id: '1.16.5', type: 'release' },
-        ])
+  // Load Minecraft Versions (Fetch Full 900+ Versions List from Mojang Manifest)
+  const fetchAllVersions = async () => {
+    try {
+      const list = await invoke('get_available_versions', { includeSnapshots: true })
+      if (Array.isArray(list) && list.length > 0) {
+        setVersions(list)
+        return
       }
+    } catch (e) {
+      console.error('Local manifest fetch error, using fallback API:', e)
     }
-    fetchVersions()
+
+    try {
+      const res = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json')
+      const data = await res.json()
+      if (Array.isArray(data?.versions)) {
+        setVersions(data.versions)
+      }
+    } catch (err) {
+      setVersions([
+        { id: '26.3', type: 'snapshot' },
+        { id: '1.21.4', type: 'release' },
+        { id: '1.21.3', type: 'release' },
+        { id: '1.21.1', type: 'release' },
+        { id: '1.20.1', type: 'release' },
+        { id: '1.19.2', type: 'release' },
+        { id: '1.16.5', type: 'release' },
+        { id: '1.12.2', type: 'release' },
+        { id: '1.7.10', type: 'release' },
+      ])
+    }
+  }
+
+  useEffect(() => {
+    fetchAllVersions()
   }, [])
 
   // Active Profile object
@@ -436,30 +417,6 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     }
   }
 
-  // Custom Skin Upload
-  const handleSkinFileChange = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const base64Data = event.target?.result
-      if (typeof base64Data === 'string') {
-        const newSkinObj = {
-          id: `custom_${Date.now()}`,
-          name: file.name.replace(/\.[^/.]+$/, ''),
-          type: skinModelType,
-          url: base64Data,
-          thumb: base64Data,
-          isCustom: true,
-        }
-        addCustomSkin(newSkinObj)
-        showToast(`Equipped skin: ${newSkinObj.name}`, 'success')
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
   // Toggle Installed Mod
   const handleToggleMod = async (mod) => {
     try {
@@ -484,7 +441,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         if (status === 'launching' || status === 'running') {
           setLaunchStatus('running')
         } else {
-          setLaunchStatus('downloading')
+          setLaunchStatus('idle')
         }
       })
 
@@ -524,11 +481,15 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     }
   }
 
+  // Force Out / Kill Game (Terminates process immediately)
   const handleForceQuit = async () => {
     try {
-      await invoke('kill_game', { profileId: activeInstance.id || 'default' })
+      await invoke('kill_game')
       setLaunchStatus('idle')
-    } catch (err) {}
+      showToast('Terminated Minecraft process completely.', 'success')
+    } catch (err) {
+      showToast(`Force out error: ${err}`, 'error')
+    }
   }
 
   // Filtered Logs
@@ -545,15 +506,6 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#111216] text-slate-100 font-sans select-none flex">
-      {/* Hidden File Input for Custom Skin PNG */}
-      <input
-        type="file"
-        ref={skinFileInputRef}
-        onChange={handleSkinFileChange}
-        accept="image/png"
-        className="hidden"
-      />
-
       {/* Hidden File Input for Modpack Upload */}
       <input
         type="file"
@@ -570,14 +522,13 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         className="hidden"
       />
 
-      {/* 1. LEFT MODRINTH VERTICAL NAVIGATION RAIL */}
+      {/* 1. LEFT VERTICAL NAVIGATION RAIL (Skin tab removed per user instruction) */}
       <nav className="w-16 h-full bg-[#0d0e11] border-r border-white/5 flex flex-col items-center justify-between py-3.5 z-40 select-none">
         <div className="flex flex-col items-center gap-3">
-          {/* Modrinth Wrench Logo */}
           <div
             onClick={() => navigateTo('home')}
             className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center cursor-pointer shadow-lg hover:border-emerald-400 transition-all"
-            title="Modrinth Home"
+            title="Minecraft Home"
           >
             <div className="w-5 h-5 rounded-lg border-2 border-emerald-400 flex items-center justify-center">
               <span className="text-[10px] font-black text-emerald-400">M</span>
@@ -586,7 +537,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
           <div className="w-8 h-[1px] bg-white/10 my-0.5" />
 
-          {/* Navigation Icons */}
+          {/* Navigation Icons: Home, Discover, Instances, Create (+) */}
           <div className="flex flex-col gap-2">
             <button
               onClick={() => navigateTo('home')}
@@ -610,18 +561,6 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               title="Discover Content (Mods, Modpacks, Shaders)"
             >
               <Compass className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={() => navigateTo('skins')}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                activeTab === 'skins'
-                  ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`}
-              title="Skin Selector & Offline Profile"
-            >
-              <Shirt className="w-4 h-4" />
             </button>
 
             <button
@@ -654,7 +593,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           <button
             onClick={() => setIsSettingsModalOpen(true)}
             className="w-10 h-10 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white flex items-center justify-center transition-all"
-            title="Settings (Java, Memory, Display)"
+            title="Settings (Java, Memory, Window, Behavior)"
           >
             <SettingsIcon className="w-4 h-4" />
           </button>
@@ -681,7 +620,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
             <div className="flex items-center gap-1">
               <button
                 onClick={handleNavBack}
-                className="w-6 h-6 rounded-md hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+                className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
                 title="Back"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -689,7 +628,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               <button
                 onClick={handleNavForward}
                 disabled={historyIndex >= navHistory.length - 1}
-                className="w-6 h-6 rounded-md hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30"
+                className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30"
                 title="Forward"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -703,8 +642,6 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   ? `Home / ${activeInstance.name}`
                   : activeTab === 'discover'
                   ? 'Discover content'
-                  : activeTab === 'skins'
-                  ? 'Skin selector'
                   : 'Installed instances'}
               </span>
             </div>
@@ -712,25 +649,31 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
           {/* Right Header Controls (Status & Window buttons - Matching Uploaded Image) */}
           <div className="flex items-center gap-3">
-            {/* Live Modrinth Download Pill (Matching Image 1) */}
+            {/* Live Modrinth Download Pill */}
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-black/50 border border-white/10 text-xs shadow-inner">
-              <RotateCw className={`w-3.5 h-3.5 text-slate-400 ${launchStatus === 'downloading' ? 'animate-spin text-emerald-400' : ''}`} />
+              <RotateCw className={`w-3.5 h-3.5 text-slate-400 ${launchStatus === 'running' || launchStatus === 'downloading' ? 'animate-spin text-emerald-400' : ''}`} />
               <span className="font-bold text-white text-xs">
                 {activeInstance.fabric_version ? 'Fabric' : 'Minecraft'} {activeInstance.mc_version}
               </span>
               <span className="text-emerald-400/90 font-mono text-[11px] font-semibold">
-                {launchStatus === 'downloading' ? '2.47 MB/s' : 'Ready'}
+                {launchStatus === 'running' ? 'Playing' : launchStatus === 'downloading' ? '2.47 MB/s' : 'Ready'}
               </span>
               <div className="flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black border border-emerald-500/40">
                 {installedMods.length}
               </div>
             </div>
 
-            {/* Offline Account Pill */}
+            {/* Offline Account Name Tag (Click to edit inline, no black screen) */}
             <div
-              onClick={() => navigateTo('skins')}
+              onClick={() => {
+                const newName = prompt('Enter offline username:', offlineUsername)
+                if (newName && newName.trim()) {
+                  setOfflineUsername(newName.trim())
+                  showToast(`Player name set to: ${newName.trim()}`, 'success')
+                }
+              }}
               className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs cursor-pointer transition-colors"
-              title="Click to view offline profile"
+              title="Click to rename player"
             >
               <div className="w-2 h-2 rounded-full bg-emerald-400" />
               <span className="font-bold text-white text-[11px]">{offlineUsername}</span>
@@ -782,8 +725,18 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   <span className="text-emerald-400 font-bold">{offlineUsername}</span>
                 </p>
                 <div className="flex items-center justify-center gap-2 pt-1">
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    {activeInstance.fabric_version ? 'Fabric Loader' : 'Vanilla'}
+                  {/* Select Minecraft Version Button (Shows full version catalog) */}
+                  <button
+                    onClick={() => setIsVersionPickerOpen(true)}
+                    className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 transition-colors"
+                    title="Change version for this instance"
+                  >
+                    <span>Version: {activeInstance.mc_version}</span>
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
+                    {activeInstance.fabric_version ? 'Fabric' : 'Vanilla'}
                   </span>
                   <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
                     {installedMods.length} Mods Active
@@ -791,21 +744,21 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                 </div>
               </div>
 
-              {/* Action Buttons */}
+              {/* Action Buttons: Play / Force Out */}
               <div className="flex flex-col gap-3 w-full max-w-xs">
                 {launchStatus === 'running' ? (
                   <button
                     onClick={handleForceQuit}
-                    className="w-full py-3.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2"
+                    className="w-full py-3.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm uppercase tracking-wider shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
                   >
                     <Square className="w-4 h-4 fill-current" />
-                    <span>FORCE QUIT MINECRAFT</span>
+                    <span>FORCE OUT MINECRAFT</span>
                   </button>
                 ) : (
                   <button
                     onClick={handleLaunch}
                     disabled={launchStatus === 'downloading'}
-                    className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm uppercase tracking-wider shadow-xl shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm uppercase tracking-wider shadow-xl shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
                     {launchStatus === 'downloading' ? (
                       <>
@@ -879,12 +832,12 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               )}
             </div>
 
-            {/* Bottom launcher shortcut */}
+            {/* Bottom Return Shortcut */}
             <div className="absolute bottom-6 flex flex-col items-center gap-2">
               <span className="text-[11px] text-slate-500">Escaping another launcher?</span>
               <button
                 onClick={onBackToLauncher}
-                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-2 transition-colors"
+                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
                 <span>Return to Universal Game Library</span>
@@ -922,7 +875,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
               {/* Target Instance Indicator */}
               <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span>Installing to:</span>
+                <span>Target:</span>
                 <span className="font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20 font-bold">
                   {activeInstance.name} ({activeInstance.mc_version})
                 </span>
@@ -1024,7 +977,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                         e.stopPropagation()
                         handleOpenProjectDetail(item)
                       }}
-                      className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-emerald-500 hover:text-black text-slate-200 transition-all flex items-center gap-1.5 flex-shrink-0"
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-emerald-500 hover:text-black text-slate-200 transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
                     >
                       <span>Select Version</span>
                       <ChevronDown className="w-3.5 h-3.5" />
@@ -1036,162 +989,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           </div>
         )}
 
-        {/* VIEW 3: SKIN SELECTOR & OFFLINE PROFILE (Clean Design without 3D canvas) */}
-        {activeTab === 'skins' && (
-          <div className="flex-1 flex flex-col justify-between p-8 overflow-y-auto">
-            <div className="max-w-4xl mx-auto w-full space-y-6">
-              {/* Top Header Card */}
-              <div className="p-6 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-between gap-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
-                    <User className="w-8 h-8 text-emerald-400" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-white">{offlineUsername}</h3>
-                    <p className="text-xs text-slate-400">
-                      Offline Player Profile • Singleplayer & LAN Ready
-                    </p>
-                    <div className="flex items-center gap-2 pt-2">
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
-                        Active Local Account
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/5 text-slate-300 text-[10px] font-mono capitalize">
-                        Model: {skinModelType}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  {!isEditingUsername ? (
-                    <button
-                      onClick={() => {
-                        setTempUsername(offlineUsername)
-                        setIsEditingUsername(true)
-                      }}
-                      className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white border border-white/10 transition-colors"
-                    >
-                      Change Name
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={tempUsername}
-                        onChange={(e) => setTempUsername(e.target.value)}
-                        className="px-3 py-1.5 rounded-xl bg-[#0c0d10] border border-emerald-500 text-xs text-white font-mono focus:outline-none"
-                      />
-                      <button
-                        onClick={() => {
-                          setOfflineUsername(tempUsername)
-                          setIsEditingUsername(false)
-                          showToast(`Username updated to ${tempUsername}`, 'success')
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-500 text-black font-bold text-xs"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => {
-                      const next = skinModelType === 'classic' ? 'slim' : 'classic'
-                      setSkinModelType(next)
-                      setOfflineSkin({ ...offlineSkin, type: next })
-                    }}
-                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-300 border border-white/10 transition-colors capitalize"
-                  >
-                    Switch to {skinModelType === 'classic' ? 'Slim' : 'Classic'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Saved Skins Section */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400">
-                    Custom Uploaded Skins ({savedCustomSkins.length})
-                  </h4>
-                  <button
-                    onClick={() => skinFileInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs font-bold border border-emerald-500/40 flex items-center gap-1.5"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload .PNG Skin</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-4 gap-3">
-                  {savedCustomSkins.map((skin) => (
-                    <div
-                      key={skin.id}
-                      onClick={() => {
-                        setOfflineSkin(skin)
-                        setSkinModelType(skin.type || 'classic')
-                        showToast(`Equipped ${skin.name}`, 'success')
-                      }}
-                      className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between group ${
-                        offlineSkin?.id === skin.id
-                          ? 'bg-emerald-500/10 border-emerald-500/60 shadow-lg'
-                          : 'bg-black/30 hover:bg-white/5 border-white/10'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={skin.thumb || skin.url}
-                          alt={skin.name}
-                          className="w-10 h-10 object-contain drop-shadow"
-                        />
-                        <span className="text-xs font-bold text-white truncate max-w-[120px]">
-                          {skin.name}
-                        </span>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          removeCustomSkin(skin.id)
-                        }}
-                        className="p-1 rounded-md hover:bg-rose-500/20 text-slate-500 hover:text-rose-400"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Default Minecraft Skins Grid */}
-              <div className="space-y-3">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400">
-                  Default Minecraft Skins
-                </h4>
-                <div className="grid grid-cols-6 gap-3">
-                  {OFFICIAL_DEFAULT_SKINS.map((skin) => (
-                    <div
-                      key={skin.id}
-                      onClick={() => {
-                        setOfflineSkin(skin)
-                        setSkinModelType(skin.type)
-                        showToast(`Equipped ${skin.name}`, 'success')
-                      }}
-                      className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col items-center gap-2 ${
-                        offlineSkin?.id === skin.id
-                          ? 'bg-emerald-500/10 border-emerald-500/60 shadow-lg'
-                          : 'bg-black/30 hover:bg-white/5 border-white/10'
-                      }`}
-                    >
-                      <img src={skin.thumb} alt={skin.name} className="w-14 h-16 object-contain" />
-                      <span className="text-xs font-bold text-slate-200">{skin.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* VIEW 4: INSTALLED INSTANCES & MANAGEMENT (Matching Modrinth App: Mods, Files, Logs) */}
+        {/* VIEW 3: INSTALLED INSTANCES & MANAGEMENT */}
         {activeTab === 'instances' && (
           <div className="flex-1 flex flex-col overflow-hidden p-6 space-y-4">
             {/* Top Toolbar: Switch Instance & Sub-tabs */}
@@ -1268,7 +1066,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleOpenInstanceFolder(activeInstance.id)}
-                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-300 border border-white/10 flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-300 border border-white/10 flex items-center gap-1.5 cursor-pointer"
                   title="Open in Windows Explorer"
                 >
                   <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
@@ -1278,7 +1076,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                 {profiles.length > 1 && (
                   <button
                     onClick={() => handleDeleteInstance(activeInstance.id)}
-                    className="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-xs font-bold text-rose-400 border border-rose-500/30 flex items-center gap-1.5"
+                    className="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-xs font-bold text-rose-400 border border-rose-500/30 flex items-center gap-1.5 cursor-pointer"
                     title="Delete entire instance"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1297,7 +1095,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   </span>
                   <button
                     onClick={() => navigateTo('discover')}
-                    className="text-xs font-bold text-emerald-400 hover:underline flex items-center gap-1"
+                    className="text-xs font-bold text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Add more from Discover</span>
@@ -1334,7 +1132,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                           {/* Toggle Mod Switch */}
                           <button
                             onClick={() => handleToggleMod(m)}
-                            className={`w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${
+                            className={`w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 cursor-pointer ${
                               m.enabled ? 'bg-emerald-500' : 'bg-slate-700'
                             }`}
                             title={m.enabled ? 'Enabled' : 'Disabled'}
@@ -1349,7 +1147,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                           {/* Delete Mod Button */}
                           <button
                             onClick={() => handleDeleteMod(fileName)}
-                            className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
                             title="Delete mod file"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1370,7 +1168,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                     <span className="text-slate-500">Path:</span>
                     <button
                       onClick={() => setCurrentFolderSubpath('')}
-                      className="font-mono text-emerald-400 hover:underline"
+                      className="font-mono text-emerald-400 hover:underline cursor-pointer"
                     >
                       /{activeInstance.name}
                     </button>
@@ -1380,7 +1178,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   </div>
                   <button
                     onClick={() => loadInstanceFiles()}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
                     title="Refresh files"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
@@ -1422,7 +1220,6 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
             {/* SUB-VIEW 3: GAME LOGS WITH FILTERS */}
             {instanceSubTab === 'logs' && (
               <div className="flex-1 flex flex-col overflow-hidden space-y-3">
-                {/* Log Filters Bar (Matching User Request: All, Error, Warn, Info) */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     {[
@@ -1434,7 +1231,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                       <button
                         key={f.id}
                         onClick={() => setLogFilter(f.id)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           logFilter === f.id
                             ? 'bg-emerald-500 text-black shadow-md'
                             : 'bg-white/5 text-slate-400 hover:text-white'
@@ -1447,7 +1244,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
                   <button
                     onClick={() => loadInstanceLogs()}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
                     title="Refresh logs"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
@@ -1463,7 +1260,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         )}
       </div>
 
-      {/* 3. DISCOVER VERSION PICKER MODAL (Matching User Request) */}
+      {/* 3. DISCOVER VERSION PICKER MODAL */}
       {selectedProject && (
         <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in">
           <div className="w-full max-w-2xl h-[560px] rounded-2xl bg-[#14161b] border border-white/15 shadow-2xl flex flex-col overflow-hidden">
@@ -1485,7 +1282,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               </div>
               <button
                 onClick={() => setSelectedProject(null)}
-                className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white"
+                className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1538,7 +1335,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                       <button
                         onClick={() => handleInstallSpecificVersion(v)}
                         disabled={isInstalling}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                        className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                           isInstalling
                             ? 'bg-emerald-500/50 text-black cursor-wait'
                             : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20 active:scale-95'
@@ -1565,7 +1362,62 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         </div>
       )}
 
-      {/* 4. CREATE INSTANCE MODAL */}
+      {/* 4. CHOOSE MINECRAFT VERSION MODAL (Full 900+ Versions List) */}
+      {isVersionPickerOpen && (
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in">
+          <div className="w-full max-w-xl h-[560px] rounded-2xl bg-[#14161b] border border-white/15 shadow-2xl flex flex-col overflow-hidden">
+            <div className="p-5 border-b border-white/10 flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-base text-white">Select Minecraft Version</h3>
+                <p className="text-xs text-slate-400">
+                  Choose from full Minecraft release & snapshot catalog ({versions.length} versions)
+                </p>
+              </div>
+              <button
+                onClick={() => setIsVersionPickerOpen(false)}
+                className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
+              {versions.map((v) => (
+                <div
+                  key={v.id}
+                  onClick={async () => {
+                    setSelectedVersion(v.id)
+                    // Update active instance version
+                    try {
+                      activeInstance.mc_version = v.id
+                      setActiveProfile(activeInstance.id)
+                    } catch (e) {}
+                    setIsVersionPickerOpen(false)
+                    showToast(`Active version changed to ${v.id}`, 'success')
+                  }}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                    activeInstance.mc_version === v.id
+                      ? 'bg-emerald-500/20 border-emerald-500 text-white font-bold'
+                      : 'bg-[#0e1014] hover:bg-white/5 border-white/5 text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-sm">{v.id}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-white/10 text-slate-400 font-mono uppercase">
+                      {v.type || 'release'}
+                    </span>
+                  </div>
+                  {activeInstance.mc_version === v.id && (
+                    <span className="text-xs text-emerald-400 font-bold">Selected</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. CREATE INSTANCE MODAL */}
       {isCreateModalOpen && (
         <div className="absolute inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in">
           <div className="w-full max-w-lg rounded-2xl bg-[#14161b] border border-white/15 p-6 shadow-2xl space-y-5">
@@ -1578,7 +1430,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   setIsCreateModalOpen(false)
                   setCreateStep('choose_type')
                 }}
-                className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white transition-all border border-white/5"
+                className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white transition-all border border-white/5 cursor-pointer"
                 title="Close modal (Esc)"
               >
                 <X className="w-4 h-4" />
@@ -1675,7 +1527,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                         key={loader.id}
                         type="button"
                         onClick={() => setNewInstanceLoader(loader.id)}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                           newInstanceLoader === loader.id
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/60'
                             : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
@@ -1698,7 +1550,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   >
                     {versions.map((v) => (
                       <option key={v.id} value={v.id} className="bg-[#14161b]">
-                        {v.id} ({v.type})
+                        {v.id} ({v.type || 'release'})
                       </option>
                     ))}
                   </select>
@@ -1708,14 +1560,14 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   <button
                     type="button"
                     onClick={() => setCreateStep('choose_type')}
-                    className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold transition-colors"
+                    className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold transition-colors cursor-pointer"
                   >
                     Back
                   </button>
                   <button
                     type="button"
                     onClick={handleCreateInstanceSubmit}
-                    className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-wider transition-all shadow-lg shadow-emerald-500/20"
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-wider transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
                   >
                     Create Instance
                   </button>
@@ -1726,7 +1578,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         </div>
       )}
 
-      {/* 5. MODRINTH SETTINGS MODAL */}
+      {/* 6. MODRINTH SETTINGS MODAL */}
       {isSettingsModalOpen && (
         <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in">
           <div className="w-full max-w-2xl h-[520px] rounded-2xl bg-[#14161b] border border-white/15 shadow-2xl flex overflow-hidden">
@@ -1737,7 +1589,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Display</span>
                   <button
                     onClick={() => setSettingsCategory('appearance')}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       settingsCategory === 'appearance' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -1745,7 +1597,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   </button>
                   <button
                     onClick={() => setSettingsCategory('behavior')}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       settingsCategory === 'behavior' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -1754,22 +1606,10 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                 </div>
 
                 <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Account</span>
-                  <button
-                    onClick={() => setSettingsCategory('offline_account')}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      settingsCategory === 'offline_account' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Offline Profile
-                  </button>
-                </div>
-
-                <div className="space-y-1">
                   <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Instance Defaults</span>
                   <button
                     onClick={() => setSettingsCategory('java')}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       settingsCategory === 'java' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -1777,7 +1617,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   </button>
                   <button
                     onClick={() => setSettingsCategory('window')}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       settingsCategory === 'window' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -1791,7 +1631,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               <div className="flex justify-end">
                 <button
                   onClick={() => setIsSettingsModalOpen(false)}
-                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white transition-all border border-white/5"
+                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white transition-all border border-white/5 cursor-pointer"
                   title="Close settings (Esc)"
                 >
                   <X className="w-4 h-4" />
@@ -1823,7 +1663,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         </div>
       )}
 
-      {/* 6. IN-APP GLASSMORPHISM TOAST NOTIFICATION */}
+      {/* 7. IN-APP GLASSMORPHISM TOAST NOTIFICATION */}
       {toastNotification && (
         <div className="fixed bottom-6 right-6 z-[100] max-w-sm p-4 rounded-2xl bg-[#14161f]/90 backdrop-blur-xl border border-white/15 shadow-2xl animate-in fade-in slide-in-from-bottom-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -1840,7 +1680,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           </div>
           <button
             onClick={() => setToastNotification(null)}
-            className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center flex-shrink-0"
+            className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center flex-shrink-0 cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
           </button>

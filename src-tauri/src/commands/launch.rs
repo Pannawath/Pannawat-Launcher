@@ -3,6 +3,9 @@ use game_runtime::{ensure_java_runtime, prepare_game_environment};
 use jvm_builder::{spawn_game, JvmConfig};
 use tauri::{AppHandle, Emitter};
 use crate::commands::discord;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+static ACTIVE_GAME_PID: AtomicU32 = AtomicU32::new(0);
 
 #[derive(serde::Deserialize)]
 pub struct LaunchRequest {
@@ -70,7 +73,7 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
     .await
     .map_err(|e| format!("Game assets setup error: {:#}", e))?;
 
-    // 3. Ensure Java runtime matching Minecraft requirements (e.g. Java 25 / java-runtime-epsilon for 26.3)
+    // 3. Ensure Java runtime
     let _ = app.emit(
         "launch-status",
         LaunchStatusEvent {
@@ -91,7 +94,7 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
     .await
     .map_err(|e| format!("Java setup error: {:#}", e))?;
 
-    // 4. Install standard performance mods if profile is new or requested
+    // 4. Install mods directory
     let mods_dir = profile_dir.join("mods");
     tokio::fs::create_dir_all(&mods_dir)
         .await
@@ -124,7 +127,7 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         "launch-status",
         LaunchStatusEvent {
             status: "launching".into(),
-            message: "Spawning Minecraft client with ZGC optimization...".into(),
+            message: "Spawning Minecraft client...".into(),
         },
     );
 
@@ -135,31 +138,24 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         .await
         .map_err(|e| format!("Failed to spawn game process: {:#}", e))?;
 
-    // Pipe stdout and stderr to capture crashes or errors
-    if let Some(stdout) = child.stdout.take() {
-        use tokio::io::{AsyncBufReadExt, BufReader};
-        tokio::spawn(async move {
-            let mut reader = BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
-                println!("[MC-OUT] {}", line);
-            }
-        });
+    // Store PID for Force Out / kill_game
+    if let Some(pid) = child.id() {
+        ACTIVE_GAME_PID.store(pid, Ordering::SeqCst);
     }
 
-    if let Some(stderr) = child.stderr.take() {
-        use tokio::io::{AsyncBufReadExt, BufReader};
-        tokio::spawn(async move {
-            let mut reader = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
-                eprintln!("[MC-ERR] {}", line);
-            }
-        });
-    }
-
+    let app_exit = app.clone();
     tokio::spawn(async move {
         let status = child.wait().await;
         tracing::info!("Game process exited with: {:?}", status);
+        ACTIVE_GAME_PID.store(0, Ordering::SeqCst);
         discord::update_presence_idle();
+        let _ = app_exit.emit(
+            "launch-status",
+            LaunchStatusEvent {
+                status: "idle".into(),
+                message: "Minecraft closed.".into(),
+            },
+        );
     });
 
     let _ = app.emit(
@@ -174,6 +170,31 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub async fn kill_game(_app: AppHandle) -> Result<(), String> {
+pub async fn kill_game(app: AppHandle) -> Result<(), String> {
+    let pid = ACTIVE_GAME_PID.load(Ordering::SeqCst);
+
+    #[cfg(target_os = "windows")]
+    {
+        if pid > 0 {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .output();
+        }
+        // Force kill any orphaned javaw process spawned by launcher
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "javaw.exe"])
+            .output();
+    }
+
+    ACTIVE_GAME_PID.store(0, Ordering::SeqCst);
+
+    let _ = app.emit(
+        "launch-status",
+        LaunchStatusEvent {
+            status: "idle".into(),
+            message: "Minecraft process terminated.".into(),
+        },
+    );
+
     Ok(())
 }
