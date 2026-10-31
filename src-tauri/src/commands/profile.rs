@@ -47,15 +47,21 @@ pub fn list_profiles() -> Result<Vec<Profile>, String> {
 }
 
 #[tauri::command]
-pub fn create_profile(name: String, mc_version: String) -> Result<Profile, String> {
+pub fn create_profile(
+    name: String,
+    mc_version: String,
+    fabric_version: Option<String>,
+) -> Result<Profile, String> {
     let dir = get_profiles_dir()?;
     let base_data = dirs::data_dir()
         .ok_or_else(|| "Cannot find APPDATA".to_string())?
         .join("PannawatLauncher");
 
-    let profile = Profile::new(name, mc_version, base_data);
+    let mut profile = Profile::new(name, mc_version, base_data);
+    profile.fabric_version = fabric_version;
     let profile_dir = dir.join(&profile.id);
     fs::create_dir_all(&profile_dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(profile_dir.join("mods")).map_err(|e| e.to_string())?;
     fs::write(
         profile_dir.join("profile.json"),
         serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?,
@@ -63,6 +69,38 @@ pub fn create_profile(name: String, mc_version: String) -> Result<Profile, Strin
     .map_err(|e| e.to_string())?;
 
     Ok(profile)
+}
+
+#[tauri::command]
+pub fn open_instance_folder(profile_id: String) -> Result<(), String> {
+    let dir = get_profiles_dir()?;
+    let target = dir.join(&profile_id);
+    fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(target)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_mods_folder(profile_id: String) -> Result<(), String> {
+    let dir = get_profiles_dir()?;
+    let target = dir.join(&profile_id).join("mods");
+    fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(target)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -84,7 +122,7 @@ pub fn export_profile(profile_id: String, output_path: String) -> Result<(), Str
 
 #[tauri::command]
 pub fn import_profile(zip_path: String, profile_name: String, mc_version: String) -> Result<Profile, String> {
-    let profile = create_profile(profile_name, mc_version)?;
+    let profile = create_profile(profile_name, mc_version, None)?;
     let dir = get_profiles_dir()?;
     let profile_dir = dir.join(&profile.id);
     import_profile_zip(&PathBuf::from(zip_path), &profile_dir).map_err(|e| e.to_string())?;

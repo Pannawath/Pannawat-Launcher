@@ -36,6 +36,8 @@ pub fn run() {
             profile::delete_profile,
             profile::export_profile,
             profile::import_profile,
+            profile::open_instance_folder,
+            profile::open_mods_folder,
             // Launch
             launch::launch_game,
             launch::kill_game,

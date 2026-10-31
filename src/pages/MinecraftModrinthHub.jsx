@@ -34,6 +34,9 @@ import {
   HardDrive,
   Monitor,
   Palette,
+  FileCode,
+  Box,
+  MoreVertical,
 } from 'lucide-react'
 import { useSettingsStore } from '../store/settingsStore'
 import { useProfileStore } from '../store/profileStore'
@@ -126,6 +129,11 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     savedCustomSkins,
     addCustomSkin,
     removeCustomSkin,
+    profiles,
+    setProfiles,
+    activeProfileId,
+    setActiveProfile,
+    getActiveProfile,
   } = useProfileStore()
 
   // Navigation: 'home' | 'discover' | 'skins' | 'instances'
@@ -133,21 +141,24 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const [navHistory, setNavHistory] = useState(['home'])
   const [historyIndex, setHistoryIndex] = useState(0)
 
-  // Discover Content: 'modpacks' | 'mods' | 'resourcepacks' | 'shaders' | 'datapacks'
+  // Discover Content
   const [discoverType, setDiscoverType] = useState('modpacks')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [isSearching, setIsSearching] = useState(false)
-  const [installingId, setInstallingId] = useState(null)
 
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [createStep, setCreateStep] = useState('choose_type') // 'choose_type' | 'custom_setup'
+  const [newInstanceName, setNewInstanceName] = useState('')
+  const [newInstanceVersion, setNewInstanceVersion] = useState('1.21.4')
+  const [newInstanceLoader, setNewInstanceLoader] = useState('fabric') // 'fabric' | 'forge' | 'neoforge' | 'quilt' | 'vanilla'
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
-  const [settingsCategory, setSettingsCategory] = useState('appearance') // 'appearance' | 'features' | 'java' | 'offline_account'
+  const [settingsCategory, setSettingsCategory] = useState('appearance')
 
   // Skin Selector Model State
   const [skinModelType, setSkinModelType] = useState(offlineSkin?.type || 'classic')
-  const [skinAnimation, setSkinAnimation] = useState('idle') // 'idle' | 'walk' | 'fly'
+  const [skinAnimation, setSkinAnimation] = useState('idle')
   const [isEditingUsername, setIsEditingUsername] = useState(false)
   const [tempUsername, setTempUsername] = useState(offlineUsername)
   const fileInputRef = useRef(null)
@@ -201,6 +212,26 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     } catch (e) {}
   }
 
+  // Load Profiles / Instances from Rust
+  const loadProfiles = async () => {
+    try {
+      const list = await invoke('list_profiles')
+      if (Array.isArray(list) && list.length > 0) {
+        setProfiles(list)
+        if (!activeProfileId || !list.some((p) => p.id === activeProfileId)) {
+          setActiveProfile(list[0].id)
+          setSelectedVersion(list[0].mc_version)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to list profiles:', err)
+    }
+  }
+
+  useEffect(() => {
+    loadProfiles()
+  }, [])
+
   // Load Minecraft Versions
   useEffect(() => {
     async function fetchVersions() {
@@ -212,16 +243,29 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           { id: '26.3', type: 'snapshot' },
           { id: '1.21.4', type: 'release' },
           { id: '1.21.3', type: 'release' },
+          { id: '1.21.1', type: 'release' },
+          { id: '1.20.1', type: 'release' },
+          { id: '1.19.2', type: 'release' },
+          { id: '1.16.5', type: 'release' },
         ])
       }
     }
     fetchVersions()
   }, [])
 
-  // Load Installed Mods
+  // Active Profile object
+  const activeInstance = getActiveProfile() || profiles[0] || {
+    id: 'default',
+    name: 'Default Profile',
+    mc_version: selectedVersion || '1.21.4',
+    fabric_version: '0.16.10',
+  }
+
+  // Load Installed Mods for Active Instance
   const loadMods = async () => {
     try {
-      const mods = await invoke('list_installed_mods', { profileId: 'default' })
+      const profileId = activeInstance.id || 'default'
+      const mods = await invoke('list_installed_mods', { profileId })
       setInstalledMods(mods || [])
     } catch {
       setInstalledMods([
@@ -235,7 +279,58 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
   useEffect(() => {
     loadMods()
-  }, [])
+  }, [activeInstance.id])
+
+  // Create Instance Submit Handler
+  const handleCreateInstanceSubmit = async () => {
+    const name = newInstanceName.trim() || `Minecraft ${newInstanceVersion}`
+    try {
+      const fabricVer = newInstanceLoader === 'fabric' ? '0.16.10' : null
+      const created = await invoke('create_profile', {
+        name,
+        mcVersion: newInstanceVersion,
+        fabricVersion: fabricVer,
+      })
+      await loadProfiles()
+      if (created?.id) {
+        setActiveProfile(created.id)
+        setSelectedVersion(created.mc_version)
+      }
+      setIsCreateModalOpen(false)
+      setCreateStep('choose_type')
+      setNewInstanceName('')
+    } catch (err) {
+      console.error('Failed to create instance:', err)
+    }
+  }
+
+  // Delete Instance
+  const handleDeleteInstance = async (id) => {
+    try {
+      await invoke('delete_profile', { profileId: id })
+      await loadProfiles()
+    } catch (err) {
+      console.error('Failed to delete instance:', err)
+    }
+  }
+
+  // Open Instance Folder in Windows Explorer
+  const handleOpenInstanceFolder = async (id) => {
+    try {
+      await invoke('open_instance_folder', { profileId: id })
+    } catch (err) {
+      console.error('Failed to open instance folder:', err)
+    }
+  }
+
+  // Open Mods Folder in Windows Explorer
+  const handleOpenModsFolder = async (id) => {
+    try {
+      await invoke('open_mods_folder', { profileId: id })
+    } catch (err) {
+      console.error('Failed to open mods folder:', err)
+    }
+  }
 
   // Search Modrinth API
   const handleSearch = async (query = searchQuery) => {
@@ -302,7 +397,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const handleToggleMod = async (mod) => {
     try {
       await invoke('toggle_mod', {
-        profileId: 'default',
+        profileId: activeInstance.id || 'default',
         filename: mod.filename || mod.file_name,
         enable: !mod.enabled,
       })
@@ -343,16 +438,17 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   // Launch Minecraft with Offline Profile
   const handleLaunch = async () => {
     if (launchStatus === 'running') return
+    const currentInst = activeInstance
     setLaunchStatus('downloading')
-    setLaunchMessage(`Preparing Minecraft ${selectedVersion} for ${offlineUsername}...`)
+    setLaunchMessage(`Preparing ${currentInst.name} (${currentInst.mc_version}) for ${offlineUsername}...`)
     try {
       await invoke('launch_game', {
         req: {
-          profile_id: 'default',
-          profile_name: `Minecraft ${selectedVersion}`,
+          profile_id: currentInst.id,
+          profile_name: currentInst.name,
           username: offlineUsername,
-          mc_version: selectedVersion,
-          fabric_version: null,
+          mc_version: currentInst.mc_version,
+          fabric_version: currentInst.fabric_version || null,
           min_ram_mb: minRamMb,
           max_ram_mb: allocatedRamMb,
         },
@@ -365,7 +461,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
   const handleForceQuit = async () => {
     try {
-      await invoke('kill_game', { profileId: 'default' })
+      await invoke('kill_game', { profileId: activeInstance.id || 'default' })
       setLaunchStatus('idle')
     } catch (err) {}
   }
@@ -446,14 +542,17 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
               }`}
-              title="Installed Instances"
+              title="Installed Instances Library"
             >
               <Layers className="w-4 h-4" />
             </button>
 
             {/* Create Instance (+) */}
             <button
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => {
+                setCreateStep('choose_type')
+                setIsCreateModalOpen(true)
+              }}
               className="w-10 h-10 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white flex items-center justify-center transition-all"
               title="Create an Instance"
             >
@@ -515,7 +614,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               <span className="text-slate-500">▷</span>
               <span className="capitalize">
                 {activeTab === 'home'
-                  ? 'Home'
+                  ? `Home / ${activeInstance.name}`
                   : activeTab === 'discover'
                   ? 'Discover content'
                   : activeTab === 'skins'
@@ -527,6 +626,27 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
           {/* Right Header Controls (Status & Window buttons) */}
           <div className="flex items-center gap-3">
+            {/* Instance Quick Selector Dropdown */}
+            {profiles.length > 1 && (
+              <select
+                value={activeInstance.id}
+                onChange={(e) => {
+                  const target = profiles.find((p) => p.id === e.target.value)
+                  if (target) {
+                    setActiveProfile(target.id)
+                    setSelectedVersion(target.mc_version)
+                  }
+                }}
+                className="px-2.5 py-1 rounded-full bg-black/40 border border-white/10 text-xs font-bold text-slate-300 focus:outline-none cursor-pointer"
+              >
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-[#14161b]">
+                    {p.name} ({p.mc_version})
+                  </option>
+                ))}
+              </select>
+            )}
+
             {/* Offline Account Pill */}
             <div
               onClick={() => navigateTo('skins')}
@@ -583,7 +703,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-y-auto">
             <div className="max-w-md w-full flex flex-col items-center space-y-6">
               {/* Modrinth Emblem */}
-              <div className="w-24 h-24 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shadow-2xl shadow-emerald-500/10">
+              <div className="w-24 h-24 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shadow-2xl shadow-emerald-500/10 relative group">
                 <div className="w-14 h-14 rounded-2xl border-4 border-emerald-400 flex items-center justify-center">
                   <span className="text-2xl font-black text-emerald-400">M</span>
                 </div>
@@ -591,12 +711,20 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
               <div className="space-y-2">
                 <h2 className="text-2xl font-black text-white tracking-tight">
-                  Welcome to Modrinth Hub
+                  {activeInstance.name}
                 </h2>
                 <p className="text-sm text-slate-400">
-                  Ready to start playing Minecraft {selectedVersion} as{' '}
-                  <span className="text-emerald-400 font-bold">{offlineUsername}</span>?
+                  Ready to launch Minecraft {activeInstance.mc_version} as{' '}
+                  <span className="text-emerald-400 font-bold">{offlineUsername}</span>
                 </p>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    {activeInstance.fabric_version ? 'Fabric Loader' : 'Vanilla'}
+                  </span>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
+                    {installedMods.length} Mods Active
+                  </span>
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -623,19 +751,40 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                     ) : (
                       <>
                         <Play className="w-4 h-4 fill-current text-black" />
-                        <span>PLAY MINECRAFT {selectedVersion}</span>
+                        <span>PLAY INSTANCE</span>
                       </>
                     )}
                   </button>
                 )}
 
-                <button
-                  onClick={() => setIsCreateModalOpen(true)}
-                  className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold text-xs tracking-wider transition-colors flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-4 h-4 text-emerald-400" />
-                  <span>Create an instance</span>
-                </button>
+                {/* Instance Quick Actions */}
+                <div className="flex items-center gap-2 w-full">
+                  <button
+                    onClick={() => handleOpenInstanceFolder(activeInstance.id)}
+                    className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    title="Open game directory"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Folder</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenModsFolder(activeInstance.id)}
+                    className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    title="Open mods directory"
+                  >
+                    <Box className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Mods</span>
+                  </button>
+
+                  <button
+                    onClick={() => navigateTo('instances')}
+                    className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-bold text-xs transition-colors flex items-center justify-center"
+                    title="Switch or view all instances"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                </div>
               </div>
 
               {/* Download Progress Bar */}
@@ -718,9 +867,9 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               </div>
 
               <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span>Game Version:</span>
+                <span>Target Instance:</span>
                 <span className="font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20 font-bold">
-                  {selectedVersion}
+                  {activeInstance.name} ({activeInstance.mc_version})
                 </span>
               </div>
             </div>
@@ -808,7 +957,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           </div>
         )}
 
-        {/* VIEW 3: SKIN SELECTOR PAGE (Real 3D Interactive Viewer & Offline Account) */}
+        {/* VIEW 3: SKIN SELECTOR PAGE */}
         {activeTab === 'skins' && (
           <div className="flex-1 flex flex-col justify-between p-8 overflow-y-auto">
             <div className="flex items-start gap-12 max-w-5xl mx-auto w-full">
@@ -1035,54 +1184,108 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           </div>
         )}
 
-        {/* VIEW 4: INSTANCES / MODS MANAGEMENT */}
+        {/* VIEW 4: INSTANCES LIBRARY (All Instances Grid & Management) */}
         {activeTab === 'instances' && (
-          <div className="flex-1 p-6 overflow-y-auto space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="flex-1 p-6 overflow-y-auto space-y-6">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4">
               <div>
-                <h3 className="text-base font-bold text-white">Minecraft Instances & Profiles</h3>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-400" />
+                  <span>Minecraft Instances Library</span>
+                </h3>
                 <p className="text-xs text-slate-400">
-                  Manage active mods and configurations for version {selectedVersion}.
+                  Switch, launch, and configure your individual Minecraft versions and profiles.
                 </p>
               </div>
 
               <button
-                onClick={() => setIsCreateModalOpen(true)}
+                onClick={() => {
+                  setCreateStep('choose_type')
+                  setIsCreateModalOpen(true)
+                }}
                 className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center gap-2 shadow-md transition-colors"
               >
                 <Plus className="w-4 h-4" />
-                <span>New Instance</span>
+                <span>Create Instance</span>
               </button>
             </div>
 
-            {/* Installed Mods List */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              {installedMods.map((m) => {
-                const fileName = m.filename || m.file_name
-                const modName = m.name || m.mod_name
+            {/* Instances Cards Grid */}
+            <div className="grid grid-cols-3 gap-4">
+              {profiles.map((p) => {
+                const isActive = p.id === activeInstance.id
                 return (
                   <div
-                    key={fileName}
-                    className="p-4 rounded-2xl bg-[#0e1014] border border-white/10 flex items-center justify-between"
+                    key={p.id}
+                    onClick={() => {
+                      setActiveProfile(p.id)
+                      setSelectedVersion(p.mc_version)
+                    }}
+                    className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-4 group ${
+                      isActive
+                        ? 'bg-emerald-500/10 border-emerald-500/60 shadow-xl shadow-emerald-500/10 ring-1 ring-emerald-500/30'
+                        : 'bg-[#0f1014] hover:bg-[#14161c] border-white/5 hover:border-white/15'
+                    }`}
                   >
-                    <div>
-                      <h5 className="font-bold text-xs text-white">{modName}</h5>
-                      <span className="text-[10px] font-mono text-slate-400 block truncate max-w-[200px]">
-                        {fileName}
-                      </span>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0 ${
+                            isActive
+                              ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                              : 'bg-white/5 text-slate-300'
+                          }`}
+                        >
+                          MC
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-sm text-white group-hover:text-emerald-400 transition-colors">
+                            {p.name}
+                          </h4>
+                          <span className="text-[11px] font-mono text-slate-400 block">
+                            Version {p.mc_version}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isActive && (
+                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-md font-mono">
+                          Active
+                        </span>
+                      )}
                     </div>
-                    <button
-                      onClick={() => handleToggleMod(m)}
-                      className={`w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${
-                        m.enabled ? 'bg-emerald-500' : 'bg-slate-700'
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                          m.enabled ? 'translate-x-4' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-slate-400">
+                      <span className="font-mono">
+                        {p.fabric_version ? 'Fabric Loader' : 'Vanilla'}
+                      </span>
+
+                      <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleOpenInstanceFolder(p.id)}
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"
+                          title="Open instance folder"
+                        >
+                          <FolderOpen className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenModsFolder(p.id)}
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"
+                          title="Open mods folder"
+                        >
+                          <Box className="w-3.5 h-3.5" />
+                        </button>
+                        {profiles.length > 1 && (
+                          <button
+                            onClick={() => handleDeleteInstance(p.id)}
+                            className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400"
+                            title="Delete instance"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )
               })}
@@ -1091,89 +1294,219 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         )}
       </div>
 
-      {/* 3. CREATE INSTANCE MODAL */}
+      {/* 3. CREATE INSTANCE MODAL (Matching Image 4 & Full Custom Setup) */}
       {isCreateModalOpen && (
         <div className="absolute inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in">
           <div className="w-full max-w-lg rounded-2xl bg-[#14161b] border border-white/15 p-6 shadow-2xl space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="font-black text-lg text-white">Create instance</h3>
+              <h3 className="font-black text-lg text-white">
+                {createStep === 'custom_setup' ? 'Custom Instance Setup' : 'Create instance'}
+              </h3>
               <button
-                onClick={() => setIsCreateModalOpen(false)}
+                onClick={() => {
+                  setIsCreateModalOpen(false)
+                  setCreateStep('choose_type')
+                }}
                 className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Search mods or modpacks */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-300">
-                Already know what you want to play?
-              </label>
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  placeholder="Search mods, modpacks, and more..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+            {/* STEP 1: CHOOSE INSTANCE TYPE */}
+            {createStep === 'choose_type' && (
+              <>
+                {/* Search mods or modpacks */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-300">
+                    Already know what you want to play?
+                  </label>
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      placeholder="Search mods, modpacks, and more..."
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setIsCreateModalOpen(false)
+                          setActiveTab('discover')
+                          handleSearch(e.target.value)
+                        }
+                      }}
+                      className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-black/50 border border-emerald-500/50 text-xs text-white placeholder-slate-500 focus:outline-none ring-2 ring-emerald-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-[1px] bg-white/10" />
+                  <span className="text-[11px] text-slate-500 font-mono">or</span>
+                  <div className="flex-1 h-[1px] bg-white/10" />
+                </div>
+
+                {/* Instance Types Options */}
+                <div className="space-y-2.5">
+                  <h4 className="text-xs font-bold text-slate-300">Choose instance type</h4>
+
+                  {/* 1. Custom setup */}
+                  <div
+                    onClick={() => setCreateStep('custom_setup')}
+                    className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center gap-4"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                      <Layers className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-xs text-white">Custom setup</h5>
+                      <p className="text-[11px] text-slate-400">
+                        Start from scratch by picking a loader and game version.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 2. Start from modpack */}
+                  <div
+                    onClick={() => {
                       setIsCreateModalOpen(false)
                       setActiveTab('discover')
-                      handleSearch(e.target.value)
-                    }
-                  }}
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-black/50 border border-emerald-500/50 text-xs text-white placeholder-slate-500 focus:outline-none ring-2 ring-emerald-500/20"
-                />
-              </div>
-            </div>
+                    }}
+                    className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center gap-4"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center flex-shrink-0">
+                      <Compass className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-xs text-white">Start from a mod or modpack</h5>
+                      <p className="text-[11px] text-slate-400">
+                        Choose a project and we'll use its latest version.
+                      </p>
+                    </div>
+                  </div>
 
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-[1px] bg-white/10" />
-              <span className="text-[11px] text-slate-500 font-mono">or</span>
-              <div className="flex-1 h-[1px] bg-white/10" />
-            </div>
+                  {/* 3. Upload modpack */}
+                  <div
+                    onClick={() => {
+                      setIsCreateModalOpen(false)
+                      setActiveTab('home')
+                    }}
+                    className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center gap-4 opacity-75"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center flex-shrink-0">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-xs text-white">Upload a modpack</h5>
+                      <p className="text-[11px] text-slate-400">
+                        Install a modpack from an .mrpack file on your device.
+                      </p>
+                    </div>
+                  </div>
 
-            {/* Instance Types Grid */}
-            <div className="space-y-2.5">
-              <h4 className="text-xs font-bold text-slate-300">Choose instance type</h4>
-
-              <div
-                onClick={() => {
-                  setIsCreateModalOpen(false)
-                  setSelectedVersion('26.3')
-                  setActiveTab('home')
-                }}
-                className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center gap-4"
-              >
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0">
-                  <Layers className="w-5 h-5" />
+                  {/* 4. Import instance */}
+                  <div
+                    onClick={() => {
+                      setIsCreateModalOpen(false)
+                      setActiveTab('home')
+                    }}
+                    className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center gap-4 opacity-75"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center flex-shrink-0">
+                      <Box className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-xs text-white">Import instance</h5>
+                      <p className="text-[11px] text-slate-400">
+                        Import an instance from Prism, CurseForge, or similar.
+                      </p>
+                    </div>
+                  </div>
                 </div>
+              </>
+            )}
+
+            {/* STEP 2: CUSTOM SETUP DETAIL FORM */}
+            {createStep === 'custom_setup' && (
+              <div className="space-y-4">
+                {/* Instance Name */}
                 <div>
-                  <h5 className="font-bold text-xs text-white">Custom setup</h5>
-                  <p className="text-[11px] text-slate-400">
-                    Start from scratch with version 26.3, Microsoft Java 25 LTS, and ZGC.
-                  </p>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Instance Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newInstanceName}
+                    onChange={(e) => setNewInstanceName(e.target.value)}
+                    placeholder={`Minecraft ${newInstanceVersion}`}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/15 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
                 </div>
-              </div>
 
-              <div
-                onClick={() => {
-                  setIsCreateModalOpen(false)
-                  setActiveTab('discover')
-                }}
-                className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center gap-4"
-              >
-                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center flex-shrink-0">
-                  <Compass className="w-5 h-5" />
-                </div>
+                {/* Loader Selection */}
                 <div>
-                  <h5 className="font-bold text-xs text-white">Start from a mod or modpack</h5>
-                  <p className="text-[11px] text-slate-400">
-                    Browse and install directly from Modrinth catalog.
-                  </p>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Mod Loader
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'fabric', label: 'Fabric' },
+                      { id: 'vanilla', label: 'Vanilla' },
+                      { id: 'neoforge', label: 'NeoForge' },
+                      { id: 'forge', label: 'Forge' },
+                      { id: 'quilt', label: 'Quilt' },
+                    ].map((loader) => (
+                      <button
+                        key={loader.id}
+                        type="button"
+                        onClick={() => setNewInstanceLoader(loader.id)}
+                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                          newInstanceLoader === loader.id
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/60'
+                            : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+                        }`}
+                      >
+                        {loader.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Minecraft Version Selection */}
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Minecraft Version
+                  </label>
+                  <select
+                    value={newInstanceVersion}
+                    onChange={(e) => setNewInstanceVersion(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/15 text-xs text-white font-mono focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  >
+                    {versions.map((v) => (
+                      <option key={v.id} value={v.id} className="bg-[#14161b]">
+                        {v.id} ({v.type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-3 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setCreateStep('choose_type')}
+                    className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreateInstanceSubmit}
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-wider transition-all shadow-lg shadow-emerald-500/20"
+                  >
+                    Create Instance
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
