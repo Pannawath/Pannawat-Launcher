@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
@@ -33,5 +33,27 @@ pub fn export_profile_zip(profile_dir: &Path, output_zip: &Path) -> Result<()> {
 
 /// Imports a modpack .zip into the given profile directory
 pub fn import_profile_zip(zip_file: &Path, target_profile_dir: &Path) -> Result<()> {
-    downloader::extract_zip(zip_file, target_profile_dir)
+    std::fs::create_dir_all(target_profile_dir)?;
+    let file = File::open(zip_file).context("Open profile archive")?;
+    let mut archive = zip::ZipArchive::new(file).context("Read profile archive")?;
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).context("Read profile archive entry")?;
+        let Some(relative) = entry.enclosed_name().map(|path| path.to_owned()) else {
+            continue;
+        };
+        if relative == Path::new("profile.json") {
+            continue;
+        }
+        let output = target_profile_dir.join(relative);
+        if entry.is_dir() {
+            std::fs::create_dir_all(output)?;
+            continue;
+        }
+        if let Some(parent) = output.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut destination = File::create(output)?;
+        std::io::copy(&mut entry, &mut destination)?;
+    }
+    Ok(())
 }

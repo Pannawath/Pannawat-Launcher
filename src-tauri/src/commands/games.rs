@@ -57,8 +57,8 @@ pub async fn get_installed_games() -> Result<Vec<InstalledGame>, String> {
         platform: "minecraft".into(),
         banner_url: "https://images.unsplash.com/photo-1627856013091-fed6e4e30025?auto=format&fit=crop&w=1920&q=80".into(),
         icon_url: "https://cdn.iconscout.com/icon/free/png-256/free-minecraft-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-2795415.png".into(),
-        description: "Explore infinite blocky worlds, craft tools, build majestic structures, and battle monsters. Featuring official version 26.3, Microsoft Java 25 LTS, and ultra-low latency ZGC optimization.".into(),
-        launch_target: "26.3".into(),
+        description: "Explore infinite blocky worlds, craft tools, build majestic structures, and battle monsters.".into(),
+        launch_target: "1.21.4".into(),
         is_running: false,
         tag: "Most Played".into(),
     });

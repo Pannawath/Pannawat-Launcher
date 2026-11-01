@@ -1,6 +1,6 @@
 /// CurseForge API integration
 /// Requires CF_API_KEY environment variable
-use anyhow::{bail, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 const CF_BASE: &str = "https://api.curseforge.com/v1";

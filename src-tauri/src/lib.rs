@@ -10,6 +10,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             println!("[LAUNCHER-LOG] Tauri setup hook executed successfully.");
             
@@ -33,6 +34,7 @@ pub fn run() {
             // Profiles & Modpacks
             profile::list_profiles,
             profile::create_profile,
+            profile::update_profile,
             profile::delete_profile,
             profile::export_profile,
             profile::import_profile,

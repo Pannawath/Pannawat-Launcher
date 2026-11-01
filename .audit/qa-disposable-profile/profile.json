@@ -1,0 +1,13 @@
+{
+  "id": "d21f6730-fbcf-4f50-b1f4-6e55ed87ffea",
+  "name": "QA Disposable",
+  "mc_version": "1.21.4",
+  "fabric_version": "0.16.10",
+  "min_ram_mb": 512,
+  "max_ram_mb": 4096,
+  "extra_jvm_flags": [],
+  "cover_image": null,
+  "play_time_secs": 0,
+  "game_dir": "C:\\Users\\mapay\\AppData\\Roaming\\PannawatLauncher\\profiles\\d21f6730-fbcf-4f50-b1f4-6e55ed87ffea",
+  "created_at": "1793472002"
+}

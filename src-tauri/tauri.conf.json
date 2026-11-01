@@ -5,6 +5,7 @@
     "identifier":  "com.pannawat.launcher",
     "build":  {
                   "beforeDevCommand":  "npm run dev",
+                  "devUrl":  "http://127.0.0.1:1420",
                   "beforeBuildCommand":  "npm run build",
                   "frontendDist":  "../dist"
               },
@@ -14,8 +15,8 @@
                                     "title":  "Pannawat Launcher",
                                     "width":  1280,
                                     "height":  800,
-                                    "minWidth":  1280,
-                                    "minHeight":  800,
+                                    "minWidth":  960,
+                                    "minHeight":  640,
                                     "resizable":  true,
                                     "decorations":  true,
                                     "transparent":  false,

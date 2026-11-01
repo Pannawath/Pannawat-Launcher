@@ -12,6 +12,15 @@ pub struct SearchModsRequest {
 }
 
 fn get_profile_mods_dir(profile_id: &str) -> Result<PathBuf, String> {
+    if profile_id.is_empty()
+        || profile_id == "."
+        || profile_id == ".."
+        || profile_id.contains('/')
+        || profile_id.contains('\\')
+        || profile_id.contains(':')
+    {
+        return Err("Invalid profile ID.".into());
+    }
     let base = dirs::data_dir()
         .ok_or_else(|| "Cannot find APPDATA directory".to_string())?
         .join("PannawatLauncher")
@@ -20,6 +29,17 @@ fn get_profile_mods_dir(profile_id: &str) -> Result<PathBuf, String> {
         .join("mods");
     fs::create_dir_all(&base).map_err(|e| e.to_string())?;
     Ok(base)
+}
+
+fn validate_mod_filename(filename: &str) -> Result<(), String> {
+    let path = std::path::Path::new(filename);
+    if filename.is_empty()
+        || path.file_name().and_then(|name| name.to_str()) != Some(filename)
+        || !filename.to_ascii_lowercase().ends_with(".jar") && !filename.to_ascii_lowercase().ends_with(".jar.disabled")
+    {
+        return Err("Invalid mod filename.".into());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -66,6 +86,7 @@ pub async fn list_installed_mods(profile_id: String) -> Result<Vec<InstalledMod>
 
 #[tauri::command]
 pub async fn toggle_mod(profile_id: String, filename: String, enable: bool) -> Result<(), String> {
+    validate_mod_filename(&filename)?;
     let mods_dir = get_profile_mods_dir(&profile_id)?;
     let current_path = mods_dir.join(&filename);
 
@@ -103,6 +124,7 @@ pub async fn install_mod_file_url(
     filename: String,
 ) -> Result<(), String> {
     let client = reqwest::Client::new();
+    validate_mod_filename(&filename)?;
     let mods_dir = get_profile_mods_dir(&profile_id)?;
     let dest = mods_dir.join(&filename);
 
@@ -125,6 +147,7 @@ pub async fn install_mod_file_url(
 
 #[tauri::command]
 pub async fn delete_installed_mod(profile_id: String, filename: String) -> Result<(), String> {
+    validate_mod_filename(&filename)?;
     let mods_dir = get_profile_mods_dir(&profile_id)?;
     let target = mods_dir.join(&filename);
     if target.exists() {

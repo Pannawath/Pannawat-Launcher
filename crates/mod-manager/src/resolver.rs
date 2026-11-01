@@ -9,7 +9,7 @@ pub struct ConflictReport {
 
 /// Check a list of installed mods for conflicts and missing dependencies.
 /// Currently a stub — will be expanded when mod metadata is richer.
-pub fn check(mods: &[InstalledMod]) -> ConflictReport {
+pub fn check(_mods: &[InstalledMod]) -> ConflictReport {
     // TODO: Parse fabric.mod.json inside each .jar to read real dep graph
     ConflictReport {
         conflicts: vec![],

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { open, save, confirm } from '@tauri-apps/plugin-dialog'
 import { Plus, Trash2, Download, Upload, Layers, Check, Loader2 } from 'lucide-react'
 
 export default function Profiles() {
@@ -10,6 +11,7 @@ export default function Profiles() {
   const [exportingId, setExportingId] = useState(null)
   const [importZipPath, setImportZipPath] = useState('')
   const [importProfileName, setImportProfileName] = useState('')
+  const [notice, setNotice] = useState(null)
 
   useEffect(() => {
     loadProfiles()
@@ -36,33 +38,37 @@ export default function Profiles() {
       setNewProfileName('')
       await loadProfiles()
     } catch (e) {
-      alert(`Create profile error: ${e}`)
+      setNotice({ type: 'error', text: `Create profile error: ${e}` })
     } finally {
       setLoading(false)
     }
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this profile?')) return
+    if (!(await confirm('Delete this profile and its files?', { title: 'Delete profile', kind: 'warning' }))) return
     try {
       await invoke('delete_profile', { profileId: id })
       await loadProfiles()
     } catch (e) {
-      alert(`Delete error: ${e}`)
+      setNotice({ type: 'error', text: `Delete error: ${e}` })
     }
   }
 
   const handleExport = async (id, name) => {
     setExportingId(id)
     try {
-      const outPath = `C:\\Users\\mapay\\Desktop\\${name.replace(/\\s+/g, '_')}_modpack.zip`
+      const outPath = await save({
+        defaultPath: `${name.replace(/\s+/g, '_')}_modpack.zip`,
+        filters: [{ name: 'Launcher profile ZIP', extensions: ['zip'] }],
+      })
+      if (!outPath) return
       await invoke('export_profile', {
         profileId: id,
         outputPath: outPath,
       })
-      alert(`Profile exported successfully to Desktop:\n${outPath}`)
+      setNotice({ type: 'success', text: `Profile exported to ${outPath}` })
     } catch (e) {
-      alert(`Export error: ${e}`)
+      setNotice({ type: 'error', text: `Export error: ${e}` })
     } finally {
       setExportingId(null)
     }
@@ -70,20 +76,25 @@ export default function Profiles() {
 
   const handleImport = async (e) => {
     e.preventDefault()
-    if (!importZipPath.trim() || !importProfileName.trim()) return
+    if (!importProfileName.trim()) return
     setLoading(true)
     try {
+      const selectedPath = importZipPath.trim() || await open({
+        multiple: false,
+        filters: [{ name: 'Launcher profile ZIP', extensions: ['zip'] }],
+      })
+      if (!selectedPath || Array.isArray(selectedPath)) return
       await invoke('import_profile', {
-        zipPath: importZipPath.trim(),
+        zipPath: selectedPath,
         profileName: importProfileName.trim(),
         mcVersion: '1.21.4',
       })
       setImportZipPath('')
       setImportProfileName('')
       await loadProfiles()
-      alert('Modpack zip imported successfully!')
+      setNotice({ type: 'success', text: 'Profile imported successfully.' })
     } catch (e) {
-      alert(`Import error: ${e}`)
+      setNotice({ type: 'error', text: `Import error: ${e}` })
     } finally {
       setLoading(false)
     }
@@ -100,6 +111,12 @@ export default function Profiles() {
           Create, export, and import .zip modpacks across independent profiles.
         </p>
       </div>
+      {notice && (
+        <div role="status" className={`rounded-xl border px-4 py-3 text-sm ${notice.type === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'}`}>
+          {notice.text}
+          <button type="button" className="float-right underline" onClick={() => setNotice(null)}>Dismiss</button>
+        </div>
+      )}
 
       {/* Forms Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -168,10 +185,10 @@ export default function Profiles() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs text-[var(--color-text-muted)]">ZIP File Absolute Path</label>
+            <label className="text-xs text-[var(--color-text-muted)]">ZIP File (optional path)</label>
             <input
               type="text"
-              placeholder="C:\\path\\to\\modpack.zip"
+            placeholder="Choose a .zip file or paste its path"
               value={importZipPath}
               onChange={(e) => setImportZipPath(e.target.value)}
               className="w-full px-3 py-2 bg-[var(--color-surface-raised)] border border-[var(--color-surface-border)] rounded-xl text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
@@ -180,7 +197,7 @@ export default function Profiles() {
 
           <button
             type="submit"
-            disabled={loading || !importZipPath.trim() || !importProfileName.trim()}
+            disabled={loading || !importProfileName.trim()}
             className="w-full py-2 bg-[var(--color-surface-raised)] hover:bg-[var(--color-accent)] hover:text-white text-[var(--color-text)] text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
           >
             Import Modpack

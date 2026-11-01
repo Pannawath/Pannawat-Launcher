@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { confirm, open } from '@tauri-apps/plugin-dialog'
+import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window'
 import {
   Play,
   Compass,
@@ -45,6 +46,10 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     setAllocatedRamMb,
     minRamMb,
     setMinRamMb,
+    javaPath,
+    setJavaPath,
+    jvmArgs,
+    setJvmArgs,
     windowWidth,
     setWindowWidth,
     windowHeight,
@@ -76,6 +81,8 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const [instanceLogs, setInstanceLogs] = useState('')
   const [logFilter, setLogFilter] = useState('all') // 'all' | 'error' | 'warn' | 'info'
   const [currentFolderSubpath, setCurrentFolderSubpath] = useState('')
+  const [pendingFileDelete, setPendingFileDelete] = useState(null)
+  const [isDeletingFile, setIsDeletingFile] = useState(false)
 
   // Discover Content
   const [discoverType, setDiscoverType] = useState('modpacks')
@@ -110,8 +117,6 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   }
 
   // Modpack Upload File Input Ref
-  const modpackInputRef = useRef(null)
-
   // Offline Player Name Edit
   const [isEditingUsername, setIsEditingUsername] = useState(false)
   const [tempUsername, setTempUsername] = useState(offlineUsername)
@@ -182,10 +187,9 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
       const list = await invoke('list_profiles')
       if (Array.isArray(list) && list.length > 0) {
         setProfiles(list)
-        if (!activeProfileId || !list.some((p) => p.id === activeProfileId)) {
-          setActiveProfile(list[0].id)
-          setSelectedVersion(list[0].mc_version)
-        }
+        const selected = list.find((profile) => profile.id === activeProfileId) || list[0]
+        if (selected.id !== activeProfileId) setActiveProfile(selected.id)
+        setSelectedVersion(selected.mc_version)
       }
     } catch (err) {
       console.error('Failed to list profiles:', err)
@@ -262,6 +266,35 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
       setInstanceFiles(list || [])
     } catch (err) {
       console.error('Failed to list files:', err)
+      setInstanceFiles([])
+      showToast(`Could not load instance files: ${err}`, 'error')
+    }
+  }
+
+  const handleDeleteInstanceFile = async (file) => {
+    setIsDeletingFile(true)
+    try {
+      await invoke('delete_instance_file', {
+        profileId: activeInstance.id,
+        relativePath: file.path,
+      })
+      setPendingFileDelete(null)
+      await loadInstanceFiles()
+      showToast(`Deleted ${file.name}.`, 'success')
+    } catch (error) {
+      showToast(`Could not delete ${file.name}: ${error}`, 'error')
+    } finally {
+      setIsDeletingFile(false)
+    }
+  }
+
+  const applyWindowSize = async () => {
+    try {
+      await getCurrentWindow().setSize(new LogicalSize(windowWidth, windowHeight))
+      await getCurrentWindow().center()
+      showToast(`Window size set to ${windowWidth} × ${windowHeight}.`, 'success')
+    } catch (error) {
+      showToast(`Could not apply window size: ${error}`, 'error')
     }
   }
 
@@ -271,7 +304,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
       const logs = await invoke('get_instance_logs', { profileId: activeInstance.id })
       setInstanceLogs(logs || '')
     } catch (err) {
-      setInstanceLogs('[INFO] No game logs available yet.')
+      setInstanceLogs(`[ERROR] Could not load game logs: ${err}`)
     }
   }
 
@@ -309,6 +342,8 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
   // Delete Instance
   const handleDeleteInstance = async (id) => {
+    const approved = await confirm(`Delete instance “${activeInstance.name}” and all its files? This cannot be undone.`, { title: 'Delete instance', kind: 'warning' })
+    if (!approved) return
     try {
       await invoke('delete_profile', { profileId: id })
       await loadProfiles()
@@ -385,7 +420,18 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
       const url = `https://api.modrinth.com/v2/project/${project.project_id}/version`
       const res = await fetch(url)
       const vers = await res.json()
-      setProjectVersions(Array.isArray(vers) ? vers : [])
+      const compatibleVersions = Array.isArray(vers)
+        ? vers.filter((version) => {
+            const matchesMinecraft = version.game_versions?.includes(activeInstance.mc_version)
+            if (!matchesMinecraft) return false
+            if (discoverType === 'mods' || discoverType === 'modpacks') {
+              const loader = activeInstance.fabric_version ? 'fabric' : null
+              return !loader || version.loaders?.includes(loader)
+            }
+            return true
+          })
+        : []
+      setProjectVersions(compatibleVersions)
     } catch (err) {
       setProjectVersions([])
     } finally {
@@ -426,7 +472,9 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         enable: !mod.enabled,
       })
       await loadMods()
-    } catch (err) {}
+    } catch (err) {
+      showToast(`Could not change ${mod.name || mod.filename}: ${err}`, 'error')
+    }
   }
 
   // Listen to launch events
@@ -438,11 +486,9 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
       unlistenStatus = await listen('launch-status', (event) => {
         const { status, message } = event.payload
         setLaunchMessage(message)
-        if (status === 'launching' || status === 'running') {
-          setLaunchStatus('running')
-        } else {
-          setLaunchStatus('idle')
-        }
+        if (status === 'running') setLaunchStatus('running')
+        else if (status === 'idle' || status === 'error') setLaunchStatus('idle')
+        else setLaunchStatus('downloading')
       })
 
       unlistenProgress = await listen('download-progress', (event) => {
@@ -459,7 +505,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
   // Launch Minecraft with Offline Profile
   const handleLaunch = async () => {
-    if (launchStatus === 'running') return
+    if (launchStatus === 'running' || launchStatus === 'downloading') return
     const currentInst = activeInstance
     setLaunchStatus('downloading')
     setLaunchMessage(`Preparing ${currentInst.name} (${currentInst.mc_version}) for ${offlineUsername}...`)
@@ -473,6 +519,8 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           fabric_version: currentInst.fabric_version || null,
           min_ram_mb: minRamMb,
           max_ram_mb: allocatedRamMb,
+          java_path: javaPath || null,
+          jvm_args: jvmArgs,
         },
       })
     } catch (err) {
@@ -506,22 +554,6 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#111216] text-slate-100 font-sans select-none flex">
-      {/* Hidden File Input for Modpack Upload */}
-      <input
-        type="file"
-        ref={modpackInputRef}
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) {
-            showToast(`Selected modpack: ${file.name}. Ready for import!`, 'success')
-            setIsCreateModalOpen(false)
-            setCreateStep('choose_type')
-          }
-        }}
-        accept=".mrpack,.zip"
-        className="hidden"
-      />
-
       {/* 1. LEFT VERTICAL NAVIGATION RAIL (Skin tab removed per user instruction) */}
       <nav className="w-16 h-full bg-[#0d0e11] border-r border-white/5 flex flex-col items-center justify-between py-3.5 z-40 select-none">
         <div className="flex flex-col items-center gap-3">
@@ -1186,6 +1218,9 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-1.5 pr-2">
+                  {instanceFiles.length === 0 && (
+                    <p className="py-12 text-center text-xs text-slate-500">This folder is empty.</p>
+                  )}
                   {instanceFiles.map((file) => (
                     <div
                       key={file.path}
@@ -1208,9 +1243,37 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                         )}
                         <span className="text-xs font-mono font-semibold">{file.name}</span>
                       </div>
-                      <span className="text-[10px] font-mono text-slate-500">
-                        {file.is_dir ? 'Directory' : `${Math.round(file.size / 1024)} KB`}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-mono text-slate-500">
+                          {file.is_dir ? 'Directory' : `${Math.round(file.size / 1024)} KB`}
+                        </span>
+                        {pendingFileDelete === file.path ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleDeleteInstanceFile(file)}
+                              disabled={isDeletingFile}
+                              className="px-2 py-1 rounded-md bg-rose-500/20 text-rose-300 text-[10px] font-bold disabled:opacity-50"
+                            >
+                              {isDeletingFile ? 'Deleting…' : 'Confirm'}
+                            </button>
+                            <button
+                              onClick={() => setPendingFileDelete(null)}
+                              disabled={isDeletingFile}
+                              className="px-2 py-1 rounded-md bg-white/5 text-slate-300 text-[10px] font-bold"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(event) => { event.stopPropagation(); setPendingFileDelete(file.path) }}
+                            className="p-1.5 rounded-md text-slate-500 hover:bg-rose-500/15 hover:text-rose-300"
+                            aria-label={`Delete ${file.name}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1292,7 +1355,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               {isLoadingVersions ? (
                 <div className="py-24 text-center text-xs text-slate-400 flex flex-col items-center gap-3">
                   <RotateCw className="w-6 h-6 animate-spin text-emerald-400" />
-                  <span>Fetching all release versions...</span>
+                  <span>Fetching compatible versions...</span>
                 </div>
               ) : projectVersions.length === 0 ? (
                 <div className="py-24 text-center text-xs text-slate-400">
@@ -1386,14 +1449,18 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                 <div
                   key={v.id}
                   onClick={async () => {
-                    setSelectedVersion(v.id)
-                    // Update active instance version
                     try {
-                      activeInstance.mc_version = v.id
-                      setActiveProfile(activeInstance.id)
-                    } catch (e) {}
-                    setIsVersionPickerOpen(false)
-                    showToast(`Active version changed to ${v.id}`, 'success')
+                      const updated = await invoke('update_profile', {
+                        profile: { ...activeInstance, mc_version: v.id },
+                      })
+                      setProfiles(profiles.map((profile) => profile.id === updated.id ? updated : profile))
+                      setActiveProfile(updated.id)
+                      setSelectedVersion(v.id)
+                      setIsVersionPickerOpen(false)
+                      showToast(`Active version changed to ${v.id}`, 'success')
+                    } catch (error) {
+                      showToast(`Could not save version: ${error}`, 'error')
+                    }
                   }}
                   className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
                     activeInstance.mc_version === v.id
@@ -1475,7 +1542,29 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                 </div>
 
                 <div
-                  onClick={() => modpackInputRef.current?.click()}
+                  onClick={async () => {
+                    try {
+                      const archive = await open({ multiple: false, filters: [{ name: 'Launcher profile ZIP', extensions: ['zip'] }] })
+                      if (!archive) return
+                      const name = archive.split(/[\\/]/).pop()?.replace(/\.zip$/i, '') || 'Imported Profile'
+                      const created = await invoke('import_profile', {
+                        zipPath: archive,
+                        profileName: name,
+                        mcVersion: newInstanceVersion,
+                      })
+                      await loadProfiles()
+                      if (created?.id) {
+                        setActiveProfile(created.id)
+                        setSelectedVersion(created.mc_version)
+                        navigateTo('home')
+                      }
+                      setIsCreateModalOpen(false)
+                      setCreateStep('choose_type')
+                      showToast(`Imported ${name} as a new instance.`, 'success')
+                    } catch (error) {
+                      showToast(`Import failed: ${error}`, 'error')
+                    }
+                  }}
                   className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 cursor-pointer transition-all flex items-center justify-between gap-4 group"
                 >
                   <div className="flex items-center gap-4">
@@ -1485,7 +1574,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                     <div>
                       <h5 className="font-bold text-xs text-white">Upload a modpack</h5>
                       <p className="text-[11px] text-slate-400">
-                        Install a modpack from an .mrpack or .zip file on your PC.
+                      Import an exported launcher profile .zip from your PC.
                       </p>
                     </div>
                   </div>
@@ -1641,6 +1730,26 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               {settingsCategory === 'java' && (
                 <div className="space-y-4">
                   <h4 className="font-bold text-sm text-white">Java & Memory Allocation</h4>
+                  <p className="text-xs text-slate-400">These values are saved locally and used the next time an instance starts.</p>
+                  <div className="space-y-1">
+                    <label htmlFor="java-path" className="text-xs font-bold text-slate-300">Java executable (optional)</label>
+                    <div className="flex gap-2">
+                      <input id="java-path" value={javaPath} onChange={(event) => setJavaPath(event.target.value)} placeholder="Automatic per-version runtime" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white" />
+                      <button
+                        onClick={async () => {
+                          try {
+                            const path = await open({ multiple: false, filters: [{ name: 'Java executable', extensions: ['exe'] }] })
+                            if (typeof path === 'string') setJavaPath(path)
+                          } catch (error) { showToast(`Could not choose Java: ${error}`, 'error') }
+                        }}
+                        className="rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
+                      >Browse</button>
+                    </div>
+                  </div>
+                  <label className="block space-y-1 text-xs font-bold text-slate-300">
+                    Additional JVM arguments
+                    <input value={jvmArgs} onChange={(event) => setJvmArgs(event.target.value)} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-xs text-white" />
+                  </label>
                   <div>
                     <div className="flex justify-between text-xs font-bold mb-1">
                       <span className="text-slate-300">Maximum Memory (Xmx)</span>
@@ -1652,9 +1761,66 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                       max="16384"
                       step="512"
                       value={allocatedRamMb}
-                      onChange={(e) => setAllocatedRamMb(Number(e.target.value))}
+                      onChange={(e) => {
+                        const nextMax = Number(e.target.value)
+                        setAllocatedRamMb(nextMax)
+                        if (minRamMb > nextMax) setMinRamMb(nextMax)
+                      }}
                       className="w-full accent-emerald-500 cursor-pointer"
                     />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs font-bold mb-1">
+                      <span className="text-slate-300">Minimum Memory (Xms)</span>
+                      <span className="text-cyan-400 font-mono">{minRamMb} MB</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="512"
+                      max={Math.max(1024, Math.min(8192, allocatedRamMb))}
+                      step="256"
+                      value={Math.min(minRamMb, allocatedRamMb)}
+                      onChange={(event) => setMinRamMb(Math.min(Number(event.target.value), allocatedRamMb))}
+                      className="w-full accent-cyan-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {settingsCategory === 'window' && (
+                <div className="space-y-4">
+                  <h4 className="font-bold text-sm text-white">Window Size</h4>
+                  <p className="text-xs text-slate-400">Choose a size supported by this launcher. The minimum is 960 × 640.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1 text-xs text-slate-300">
+                      Width
+                      <input type="number" min="960" max="3840" step="80" value={windowWidth} onChange={(event) => setWindowWidth(Math.max(960, Number(event.target.value) || 960))} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white" />
+                    </label>
+                    <label className="space-y-1 text-xs text-slate-300">
+                      Height
+                      <input type="number" min="640" max="2160" step="80" value={windowHeight} onChange={(event) => setWindowHeight(Math.max(640, Number(event.target.value) || 640))} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white" />
+                    </label>
+                  </div>
+                  <button onClick={applyWindowSize} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black hover:bg-emerald-400">Apply window size</button>
+                </div>
+              )}
+
+              {settingsCategory === 'appearance' && (
+                <div className="space-y-3">
+                  <h4 className="font-bold text-sm text-white">Appearance</h4>
+                  <div className="rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-slate-300">
+                    <p className="font-bold text-white">Dark theme</p>
+                    <p className="mt-1 text-slate-400">The launcher currently uses its dark theme throughout.</p>
+                  </div>
+                </div>
+              )}
+
+              {settingsCategory === 'behavior' && (
+                <div className="space-y-3">
+                  <h4 className="font-bold text-sm text-white">Launcher Behavior</h4>
+                  <div className="rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-slate-300">
+                    <p className="font-bold text-white">Keep launcher open</p>
+                    <p className="mt-1 text-slate-400">The launcher stays open while the game starts. Other launch modes are not available yet.</p>
                   </div>
                 </div>
               )}
@@ -1688,4 +1854,4 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
       )}
     </div>
   )
-}
+      }

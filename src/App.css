@@ -88,7 +88,17 @@ button:active {
 
 input,
 button {
-  outline: none;
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  /* Keep keyboard focus visible even when a component uses focus:outline-none. */
+  outline: 2px solid #34d399 !important;
+  outline-offset: 2px;
 }
 
 #greet-input {

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use downloader::{download_batch, download_file, extract_zip, find_java_binary, DownloadProgress, DownloadTask};
+use downloader::{download_batch, find_java_binary, DownloadProgress, DownloadTask};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tracing::info;

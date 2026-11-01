@@ -9,10 +9,11 @@ export const useSettingsStore = create(
       minRamMb: 1024,
       javaPath: '',
       jvmArgs: '-XX:+UseZGC -XX:+ZGenerational',
+      selectedVersion: '1.21.4',
 
       // Window & Resolution
-      windowWidth: 1920,
-      windowHeight: 1080,
+      windowWidth: 1280,
+      windowHeight: 800,
       fullscreen: false,
 
       // Display & Appearance
@@ -29,6 +30,7 @@ export const useSettingsStore = create(
       setMinRamMb: (ram) => set({ minRamMb: ram }),
       setJavaPath: (path) => set({ javaPath: path }),
       setJvmArgs: (args) => set({ jvmArgs: args }),
+      setSelectedVersion: (version) => set({ selectedVersion: version }),
       setWindowWidth: (w) => set({ windowWidth: w }),
       setWindowHeight: (h) => set({ windowHeight: h }),
       setFullscreen: (f) => set({ fullscreen: f }),

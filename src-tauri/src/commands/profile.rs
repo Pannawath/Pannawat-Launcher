@@ -11,6 +11,63 @@ fn get_profiles_dir() -> Result<PathBuf, String> {
     Ok(base)
 }
 
+fn validate_profile_id(profile_id: &str) -> Result<(), String> {
+    if profile_id.is_empty()
+        || profile_id == "."
+        || profile_id == ".."
+        || profile_id.contains('/')
+        || profile_id.contains('\\')
+        || profile_id.contains(':')
+    {
+        return Err("Invalid profile ID.".into());
+    }
+    Ok(())
+}
+
+fn instance_path(profile_id: &str, relative: Option<&str>) -> Result<(PathBuf, PathBuf), String> {
+    validate_profile_id(profile_id)?;
+    let root = get_profiles_dir()?.join(profile_id);
+    let target = if let Some(relative) = relative {
+        let rel = PathBuf::from(relative);
+        if rel.is_absolute() || rel.components().any(|part| !matches!(part, std::path::Component::Normal(_))) {
+            return Err("Invalid instance path.".into());
+        }
+        root.join(rel)
+    } else {
+        root.clone()
+    };
+    Ok((root, target))
+}
+
+fn require_instance(profile_id: &str) -> Result<PathBuf, String> {
+    validate_profile_id(profile_id)?;
+    let root = get_profiles_dir()?.join(profile_id);
+    if !root.is_dir() {
+        return Err("Profile does not exist.".into());
+    }
+    Ok(root)
+}
+
+fn ensure_no_symlink_path(root: &PathBuf, target: &PathBuf, allow_missing_leaf: bool) -> Result<(), String> {
+    let mut current = root.clone();
+    let relative = target.strip_prefix(root).map_err(|_| "Invalid instance path.".to_string())?;
+    let components: Vec<_> = relative.components().collect();
+    for (index, component) in components.iter().enumerate() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err("Symbolic links are not allowed in instance file operations.".into());
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound
+                && allow_missing_leaf
+                && index + 1 == components.len() => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn list_profiles() -> Result<Vec<Profile>, String> {
     let dir = get_profiles_dir()?;
@@ -72,10 +129,24 @@ pub fn create_profile(
 }
 
 #[tauri::command]
-pub fn open_instance_folder(profile_id: String) -> Result<(), String> {
+pub fn update_profile(profile: Profile) -> Result<Profile, String> {
+    validate_profile_id(&profile.id)?;
     let dir = get_profiles_dir()?;
-    let target = dir.join(&profile_id);
-    fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    let profile_dir = dir.join(&profile.id);
+    if !profile_dir.is_dir() {
+        return Err("Profile does not exist.".into());
+    }
+    fs::write(
+        profile_dir.join("profile.json"),
+        serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(profile)
+}
+
+#[tauri::command]
+pub fn open_instance_folder(profile_id: String) -> Result<(), String> {
+    let target = require_instance(&profile_id)?;
     
     #[cfg(target_os = "windows")]
     {
@@ -89,8 +160,7 @@ pub fn open_instance_folder(profile_id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_mods_folder(profile_id: String) -> Result<(), String> {
-    let dir = get_profiles_dir()?;
-    let target = dir.join(&profile_id).join("mods");
+    let target = require_instance(&profile_id)?.join("mods");
     fs::create_dir_all(&target).map_err(|e| e.to_string())?;
     
     #[cfg(target_os = "windows")]
@@ -113,13 +183,11 @@ pub struct InstanceFileEntry {
 
 #[tauri::command]
 pub fn list_instance_files(profile_id: String, subpath: Option<String>) -> Result<Vec<InstanceFileEntry>, String> {
-    let dir = get_profiles_dir()?;
-    let mut target = dir.join(&profile_id);
-    if let Some(sub) = subpath {
-        let clean_sub = sub.trim_start_matches(|c| c == '/' || c == '\\');
-        target = target.join(clean_sub);
+    let (root, target) = instance_path(&profile_id, subpath.as_deref())?;
+    ensure_no_symlink_path(&root, &target, false)?;
+    if !target.is_dir() {
+        return Err("Folder does not exist in this instance.".into());
     }
-    fs::create_dir_all(&target).map_err(|e| e.to_string())?;
 
     let mut entries = Vec::new();
     if let Ok(read_dir) = fs::read_dir(&target) {
@@ -127,7 +195,7 @@ pub fn list_instance_files(profile_id: String, subpath: Option<String>) -> Resul
             let name = entry.file_name().to_string_lossy().to_string();
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            let rel_path = entry.path().strip_prefix(&dir.join(&profile_id))
+            let rel_path = entry.path().strip_prefix(&root)
                 .unwrap_or(&entry.path())
                 .to_string_lossy()
                 .replace('\\', "/");
@@ -145,9 +213,11 @@ pub fn list_instance_files(profile_id: String, subpath: Option<String>) -> Resul
 
 #[tauri::command]
 pub fn delete_instance_file(profile_id: String, relative_path: String) -> Result<(), String> {
-    let dir = get_profiles_dir()?;
-    let clean = relative_path.trim_start_matches(|c| c == '/' || c == '\\');
-    let target = dir.join(&profile_id).join(clean);
+    let (root, target) = instance_path(&profile_id, Some(&relative_path))?;
+    ensure_no_symlink_path(&root, &target, false)?;
+    if target == root {
+        return Err("Cannot delete the entire instance directory.".into());
+    }
     if target.is_dir() {
         fs::remove_dir_all(target).map_err(|e| e.to_string())?;
     } else if target.is_file() {
@@ -158,8 +228,9 @@ pub fn delete_instance_file(profile_id: String, relative_path: String) -> Result
 
 #[tauri::command]
 pub fn get_instance_logs(profile_id: String) -> Result<String, String> {
-    let dir = get_profiles_dir()?;
-    let log_path = dir.join(&profile_id).join("logs").join("latest.log");
+    let root = require_instance(&profile_id)?;
+    let log_path = root.join("logs").join("latest.log");
+    ensure_no_symlink_path(&root, &log_path, true)?;
     if log_path.exists() {
         fs::read_to_string(log_path).map_err(|e| e.to_string())
     } else {
@@ -169,8 +240,7 @@ pub fn get_instance_logs(profile_id: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn delete_profile(profile_id: String) -> Result<(), String> {
-    let dir = get_profiles_dir()?;
-    let target = dir.join(&profile_id);
+    let target = require_instance(&profile_id)?;
     if target.exists() {
         fs::remove_dir_all(target).map_err(|e| e.to_string())?;
     }
@@ -179,16 +249,22 @@ pub fn delete_profile(profile_id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn export_profile(profile_id: String, output_path: String) -> Result<(), String> {
-    let dir = get_profiles_dir()?;
-    let profile_dir = dir.join(&profile_id);
+    let profile_dir = require_instance(&profile_id)?;
     export_profile_zip(&profile_dir, &PathBuf::from(output_path)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn import_profile(zip_path: String, profile_name: String, mc_version: String) -> Result<Profile, String> {
+    let archive = PathBuf::from(&zip_path);
+    if !archive.is_file() {
+        return Err("Selected archive does not exist.".into());
+    }
     let profile = create_profile(profile_name, mc_version, None)?;
     let dir = get_profiles_dir()?;
     let profile_dir = dir.join(&profile.id);
-    import_profile_zip(&PathBuf::from(zip_path), &profile_dir).map_err(|e| e.to_string())?;
+    if let Err(error) = import_profile_zip(&archive, &profile_dir) {
+        let _ = fs::remove_dir_all(&profile_dir);
+        return Err(error.to_string());
+    }
     Ok(profile)
 }

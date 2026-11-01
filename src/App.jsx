@@ -30,6 +30,7 @@ import {
   Info,
 } from 'lucide-react'
 import { useSettingsStore } from './store/settingsStore'
+import { useProfileStore } from './store/profileStore'
 
 // Initial fallback for Minecraft before backend scan resolves
 const INITIAL_MINECRAFT = {
@@ -38,13 +39,14 @@ const INITIAL_MINECRAFT = {
   platform: 'minecraft',
   banner_url: 'https://images.unsplash.com/photo-1627856013091-fed6e4e30025?auto=format&fit=crop&w=1920&q=80',
   icon_url: 'https://cdn.iconscout.com/icon/free/png-256/free-minecraft-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-2795415.png',
-  description: 'Explore infinite blocky worlds, craft tools, build majestic structures, and battle monsters. Featuring official version 26.3, Microsoft Java 25 LTS, and ultra-low latency ZGC optimization.',
-  launch_target: '26.3',
+  description: 'Explore infinite blocky worlds, craft tools, build majestic structures, and battle monsters.',
+  launch_target: '1.21.4',
   is_running: false,
   tag: 'Most Played',
 }
 
 export default function App() {
+  const { offlineUsername, profiles, setProfiles, activeProfileId, setActiveProfile } = useProfileStore()
   const {
     showSnapshots,
     setShowSnapshots,
@@ -54,6 +56,8 @@ export default function App() {
     setAllocatedRamMb,
     minRamMb,
     setMinRamMb,
+    javaPath,
+    jvmArgs,
   } = useSettingsStore()
 
   // Real games state (strictly from machine scan + custom games)
@@ -87,7 +91,9 @@ export default function App() {
   const [installedMods, setInstalledMods] = useState([])
   const [launchStatus, setLaunchStatus] = useState('idle') // 'idle' | 'downloading' | 'running'
   const [launchMessage, setLaunchMessage] = useState('')
+  const [launchError, setLaunchError] = useState('')
   const [downloadProgress, setDownloadProgress] = useState(null)
+  const activeProfile = profiles.find((profile) => profile.id === activeProfileId) || profiles[0]
 
   // Window controls
   const handleMinimize = async () => {
@@ -140,11 +146,7 @@ export default function App() {
         const list = await invoke('get_available_versions')
         setVersions(list || [])
       } catch {
-        setVersions([
-          { id: '26.3', type: 'snapshot' },
-          { id: '1.21.4', type: 'release' },
-          { id: '1.21.3', type: 'release' },
-        ])
+        setVersions([])
       }
     }
     loadVersions()
@@ -153,27 +155,36 @@ export default function App() {
   // 3. Fetch Installed Mods
   const loadInstalledMods = async () => {
     try {
-      const mods = await invoke('list_installed_mods', { profileId: 'default' })
+      const mods = await invoke('list_installed_mods', { profileId: activeProfile?.id || 'default' })
       setInstalledMods(mods || [])
     } catch {
-      setInstalledMods([
-        { file_name: 'sodium-0.6.9.jar', mod_name: 'Sodium', enabled: true },
-        { file_name: 'lithium-0.14.7.jar', mod_name: 'Lithium', enabled: true },
-        { file_name: 'ferritecore-7.1.1.jar', mod_name: 'FerriteCore', enabled: true },
-        { file_name: 'immediatelyfast-1.3.3.jar', mod_name: 'ImmediatelyFast', enabled: true },
-      ])
+      setInstalledMods([])
     }
   }
 
   useEffect(() => {
     loadInstalledMods()
+  }, [activeProfile?.id])
+
+  useEffect(() => {
+    if (currentView === 'launcher') loadInstalledMods()
+  }, [currentView])
+
+  useEffect(() => {
+    invoke('list_profiles').then((items) => {
+      if (!Array.isArray(items) || !items.length) return
+      setProfiles(items)
+      const selected = items.find((profile) => profile.id === activeProfileId) || items[0]
+      if (selected.id !== activeProfileId) setActiveProfile(selected.id)
+      setSelectedVersion(selected.mc_version)
+    }).catch((error) => console.error('Failed to load Minecraft profile:', error))
   }, [])
 
   // 4. Toggle mod state
   const handleToggleMod = async (mod) => {
     try {
       await invoke('toggle_mod', {
-        profileId: 'default',
+        profileId: activeProfile?.id || 'default',
         filename: mod.filename || mod.file_name,
         enable: !mod.enabled,
       })
@@ -215,7 +226,7 @@ export default function App() {
     setInstallingModId(modId)
     try {
       await invoke('install_mod', {
-        profileId: 'default',
+        profileId: activeProfile?.id || 'default',
         modId,
         gameVersion: selectedVersion || '1.21.4',
       })
@@ -286,11 +297,9 @@ export default function App() {
       unlistenStatus = await listen('launch-status', (event) => {
         const { status, message } = event.payload
         setLaunchMessage(message)
-        if (status === 'launching' || status === 'running') {
-          setLaunchStatus('running')
-        } else {
-          setLaunchStatus('downloading')
-        }
+        if (status === 'running') setLaunchStatus('running')
+        else if (status === 'idle' || status === 'error') setLaunchStatus('idle')
+        else setLaunchStatus('downloading')
       })
 
       unlistenProgress = await listen('download-progress', (event) => {
@@ -319,24 +328,28 @@ export default function App() {
   // Handle Play Action
   const handleLaunch = async () => {
     if (activeGame.platform === 'minecraft') {
-      if (launchStatus === 'running') return
+      if (launchStatus === 'running' || launchStatus === 'downloading') return
       setLaunchStatus('downloading')
+      setLaunchError('')
       setLaunchMessage(`Preparing Minecraft ${selectedVersion}...`)
       try {
         await invoke('launch_game', {
           req: {
-            profile_id: 'default',
-            profile_name: `Minecraft ${selectedVersion}`,
-            username: 'Pannawath',
-            mc_version: selectedVersion,
-            fabric_version: null,
-            min_ram_mb: minRamMb,
-            max_ram_mb: allocatedRamMb,
+            profile_id: activeProfile?.id || 'default',
+            profile_name: activeProfile?.name || `Minecraft ${selectedVersion}`,
+            username: offlineUsername,
+            mc_version: activeProfile?.mc_version || selectedVersion,
+            fabric_version: activeProfile?.fabric_version || null,
+            min_ram_mb: activeProfile?.min_ram_mb || minRamMb,
+            max_ram_mb: activeProfile?.max_ram_mb || allocatedRamMb,
+            java_path: javaPath || null,
+            jvm_args: jvmArgs,
           },
         })
       } catch (err) {
         console.error('Launch error:', err)
         setLaunchStatus('idle')
+        setLaunchError(`Minecraft could not start: ${String(err)}`)
       }
     } else {
       // Universal game launch (Steam, Roblox, Epic, Custom)
@@ -347,13 +360,14 @@ export default function App() {
         })
       } catch (err) {
         console.error('Failed to launch universal game:', err)
+        setLaunchError(`Game could not start: ${String(err)}`)
       }
     }
   }
 
   const handleForceQuit = async () => {
     try {
-      await invoke('kill_game', { profileId: 'default' })
+      await invoke('kill_game')
       setLaunchStatus('idle')
     } catch (err) {
       console.error(err)
@@ -433,7 +447,7 @@ export default function App() {
       </div>
 
       {/* 2. MAIN HERO VIEWPORT */}
-      <main className="relative flex-1 h-full overflow-hidden flex flex-col justify-between pl-20 pr-80">
+      <main className="relative flex-1 h-full overflow-hidden flex flex-col justify-between pl-20 pr-80 max-[1100px]:pr-4">
         {/* Hero Background Wallpaper */}
         <div
           className="absolute inset-0 bg-cover bg-center transition-all duration-700 filter brightness-90"
@@ -481,7 +495,7 @@ export default function App() {
                 <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-black" />
               </div>
               <div className="flex flex-col text-left">
-                <span className="text-xs font-bold text-white leading-tight">Pannawath</span>
+                <span className="text-xs font-bold text-white leading-tight">{offlineUsername}</span>
                 <span className="text-[10px] text-slate-400 leading-none">
                   • {activeGame.name.split(':')[0]}
                 </span>
@@ -559,11 +573,22 @@ export default function App() {
                   {isVersionDropdownOpen && (
                     <div className="absolute bottom-full mb-2 left-0 w-64 max-h-56 overflow-y-auto rounded-2xl bg-[#10141f]/95 backdrop-blur-2xl border border-white/15 p-1.5 z-50 shadow-2xl">
                       {versions
-                        .filter((v) => (v.id === '26.3' ? true : showSnapshots || v.type === 'release'))
+                        .filter((v) => showSnapshots || v.type === 'release')
                         .map((v) => (
                           <button
                             key={v.id}
-                            onClick={() => {
+                            onClick={async () => {
+                              if (activeProfile) {
+                                try {
+                                  const updated = await invoke('update_profile', {
+                                    profile: { ...activeProfile, mc_version: v.id },
+                                  })
+                                  setProfiles(profiles.map((profile) => profile.id === updated.id ? updated : profile))
+                                } catch (error) {
+                                  console.error('Could not save Minecraft version:', error)
+                                  return
+                                }
+                              }
                               setSelectedVersion(v.id)
                               setIsVersionDropdownOpen(false)
                             }}
@@ -575,7 +600,7 @@ export default function App() {
                           >
                             <span className="font-mono">{v.id}</span>
                             <span className="text-[9px] uppercase font-bold text-slate-400">
-                              {v.id === '26.3' ? 'Featured 26.3' : v.type}
+                              {v.type}
                             </span>
                           </button>
                         ))}
@@ -583,14 +608,14 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Java 25 LTS Badge (Clicking opens Settings) */}
+                {/* Runtime settings shortcut */}
                 <button
                   onClick={() => setIsSettingsOpen(true)}
                   className="px-3.5 py-2 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-md border border-white/10 text-xs text-slate-300 flex items-center gap-1.5 transition-colors"
                   title="Configure JVM & Memory"
                 >
                   <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Java 25 LTS • ZGC</span>
+                  <span>Runtime Settings</span>
                 </button>
 
                 {/* Mods Active Badge (Clicking opens Mod Manager) */}
@@ -693,6 +718,14 @@ export default function App() {
               </div>
             </div>
           )}
+          {launchError && (
+            <div role="alert" className="mt-3 max-w-md rounded-2xl border border-red-400/40 bg-red-950/80 px-4 py-3 text-xs text-red-100 shadow-xl">
+              <div className="flex items-start justify-between gap-3">
+                <span>{launchError}</span>
+                <button type="button" className="shrink-0 underline" onClick={() => setLaunchError('')}>Dismiss</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* BOTTOM CENTER SCROLL INDICATOR CHEVRON (Clicking toggles Game Details) */}
@@ -712,7 +745,7 @@ export default function App() {
       </main>
 
       {/* 3. RIGHT GAME CARDS STACK (Real Installed Games + Custom Game Picker) */}
-      <div className="absolute right-4 top-16 bottom-6 w-72 z-40 flex flex-col justify-between pointer-events-none">
+      <div className="absolute right-4 top-16 bottom-6 w-72 z-40 flex flex-col justify-between pointer-events-none max-[1100px]:hidden">
         {/* Real Installed Games Stack */}
         <div className="space-y-2.5 overflow-y-auto pr-1 pointer-events-auto max-h-[calc(100vh-170px)]">
           {displayedGames.map((g) => {
@@ -1046,7 +1079,7 @@ export default function App() {
                 <div>
                   <h5 className="font-bold text-xs text-white">Show Snapshot Versions</h5>
                   <span className="text-[10px] text-slate-400">
-                    Includes 26.3 and development builds
+                    Includes release and snapshot versions
                   </span>
                 </div>
                 <button
@@ -1067,8 +1100,8 @@ export default function App() {
               <div className="p-3 rounded-xl bg-black/40 border border-white/10 flex items-center gap-3">
                 <Cpu className="w-5 h-5 text-cyan-400 flex-shrink-0" />
                 <div className="text-[11px]">
-                  <h6 className="font-bold text-white">Microsoft Java 25 LTS</h6>
-                  <p className="text-slate-400">ZGC Generational Garbage Collector enabled</p>
+                  <h6 className="font-bold text-white">Java Runtime</h6>
+                  <p className="text-slate-400">The launcher selects a compatible runtime for the chosen version.</p>
                 </div>
               </div>
             </div>

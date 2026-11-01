@@ -1,6 +1,5 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use std::process::Stdio;
 use tokio::process::Command;
 use tracing::info;
 
@@ -108,8 +107,10 @@ pub async fn spawn_game(cfg: &JvmConfig) -> Result<tokio::process::Child> {
     let child = Command::new(&cfg.java_path)
         .args(&args)
         .current_dir(&cfg.game_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        // Keep pipes attached so the launcher can surface JVM failures instead of
+        // silently returning to the ready state when the client exits early.
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()?;
 
     Ok(child)
