@@ -4,9 +4,9 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
-// Official / Community Minecraft Discord Application ID
-// Registered as "Minecraft" on Discord so user profile displays "Playing Minecraft"
-const DISCORD_APP_ID: &str = "432980957394370572";
+// Official Minecraft Discord Application ID
+// Registered on Discord as "Minecraft"
+const DISCORD_APP_ID: &str = "356875570916753438";
 
 static DISCORD_CLIENT: Mutex<Option<DiscordIpcClient>> = Mutex::new(None);
 
