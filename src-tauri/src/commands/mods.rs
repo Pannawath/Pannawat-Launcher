@@ -11,7 +11,7 @@ pub struct SearchModsRequest {
     pub limit: u32,
 }
 
-fn get_profile_mods_dir(profile_id: &str) -> Result<PathBuf, String> {
+fn get_profile_target_dir(profile_id: &str, folder: Option<&str>) -> Result<PathBuf, String> {
     if profile_id.is_empty()
         || profile_id == "."
         || profile_id == ".."
@@ -21,23 +21,37 @@ fn get_profile_mods_dir(profile_id: &str) -> Result<PathBuf, String> {
     {
         return Err("Invalid profile ID.".into());
     }
+    let safe_folder = match folder.unwrap_or("mods") {
+        "resourcepacks" => "resourcepacks",
+        "shaderpacks" => "shaderpacks",
+        "datapacks" => "datapacks",
+        _ => "mods",
+    };
     let base = dirs::data_dir()
         .ok_or_else(|| "Cannot find APPDATA directory".to_string())?
         .join("PannawatLauncher")
         .join("profiles")
         .join(profile_id)
-        .join("mods");
+        .join(safe_folder);
     fs::create_dir_all(&base).map_err(|e| e.to_string())?;
     Ok(base)
 }
 
+fn get_profile_mods_dir(profile_id: &str) -> Result<PathBuf, String> {
+    get_profile_target_dir(profile_id, Some("mods"))
+}
+
 fn validate_mod_filename(filename: &str) -> Result<(), String> {
     let path = std::path::Path::new(filename);
+    let lower = filename.to_ascii_lowercase();
     if filename.is_empty()
         || path.file_name().and_then(|name| name.to_str()) != Some(filename)
-        || !filename.to_ascii_lowercase().ends_with(".jar") && !filename.to_ascii_lowercase().ends_with(".jar.disabled")
+        || (!lower.ends_with(".jar")
+            && !lower.ends_with(".jar.disabled")
+            && !lower.ends_with(".zip")
+            && !lower.ends_with(".mrpack"))
     {
-        return Err("Invalid mod filename.".into());
+        return Err("Invalid mod or pack filename.".into());
     }
     Ok(())
 }
@@ -122,11 +136,12 @@ pub async fn install_mod_file_url(
     profile_id: String,
     download_url: String,
     filename: String,
+    target_folder: Option<String>,
 ) -> Result<(), String> {
     let client = reqwest::Client::new();
     validate_mod_filename(&filename)?;
-    let mods_dir = get_profile_mods_dir(&profile_id)?;
-    let dest = mods_dir.join(&filename);
+    let dest_dir = get_profile_target_dir(&profile_id, target_folder.as_deref())?;
+    let dest = dest_dir.join(&filename);
 
     let res = client
         .get(&download_url)

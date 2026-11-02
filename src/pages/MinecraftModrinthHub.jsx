@@ -452,13 +452,46 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
     setInstallingVersionId(versionObj.id)
     try {
-      await invoke('install_mod_file_url', {
-        profileId: activeInstance.id,
-        downloadUrl: primaryFile.url,
-        filename: primaryFile.filename,
-      })
-      await loadMods()
-      showToast(`Installed ${versionObj.name} (${primaryFile.filename})!`, 'success')
+      if (discoverType === 'modpacks') {
+        const isFabric = versionObj.loaders?.some((l) => l.toLowerCase() === 'fabric')
+        const mcVer = versionObj.game_versions?.[0] || activeInstance.mc_version || '1.21.4'
+        const packName = selectedProject?.title || versionObj.name || `Modpack ${mcVer}`
+
+        const created = await invoke('create_profile', {
+          name: packName,
+          mcVersion: mcVer,
+          fabricVersion: isFabric ? '0.16.10' : null,
+        })
+
+        const targetId = created?.id || activeInstance.id
+        await invoke('install_mod_file_url', {
+          profileId: targetId,
+          downloadUrl: primaryFile.url,
+          filename: primaryFile.filename,
+          targetFolder: 'mods',
+        })
+
+        await loadProfiles()
+        if (created?.id) {
+          setActiveProfile(created.id)
+          setSelectedVersion(created.mc_version)
+        }
+        showToast(`Created instance for modpack "${packName}"!`, 'success')
+      } else {
+        let targetFolder = 'mods'
+        if (discoverType === 'resourcepacks') targetFolder = 'resourcepacks'
+        else if (discoverType === 'shaders') targetFolder = 'shaderpacks'
+        else if (discoverType === 'datapacks') targetFolder = 'datapacks'
+
+        await invoke('install_mod_file_url', {
+          profileId: activeInstance.id,
+          downloadUrl: primaryFile.url,
+          filename: primaryFile.filename,
+          targetFolder,
+        })
+        await loadMods()
+        showToast(`Installed ${versionObj.name} (${primaryFile.filename})!`, 'success')
+      }
     } catch (err) {
       showToast(`Download failed: ${err}`, 'error')
     } finally {
@@ -1424,12 +1457,20 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                         {isInstalling ? (
                           <>
                             <RotateCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>Installing...</span>
+                            <span>{discoverType === 'modpacks' ? 'Creating Instance...' : 'Installing...'}</span>
                           </>
                         ) : (
                           <>
                             <Download className="w-3.5 h-3.5" />
-                            <span>Download</span>
+                            <span>
+                              {discoverType === 'modpacks'
+                                ? 'Install Modpack'
+                                : discoverType === 'resourcepacks'
+                                ? 'Install Pack'
+                                : discoverType === 'shaders'
+                                ? 'Install Shader'
+                                : 'Install Mod'}
+                            </span>
                           </>
                         )}
                       </button>
