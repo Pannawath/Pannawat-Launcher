@@ -513,6 +513,27 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     }
   }
 
+  // Toggle Loader (Vanilla <-> Fabric)
+  const handleToggleLoader = async () => {
+    try {
+      const newLoader = activeInstance.fabric_version ? 'vanilla' : 'fabric'
+      const updated = await invoke('set_profile_loader', {
+        profileId: activeInstance.id,
+        loader: newLoader,
+        loaderVersion: null,
+      })
+      await loadProfiles()
+      showToast(
+        newLoader === 'fabric'
+          ? `Switched to Fabric Loader (${updated.fabric_version || 'Active'})!`
+          : 'Switched to Vanilla Minecraft!',
+        'success'
+      )
+    } catch (err) {
+      showToast(`Could not toggle loader: ${err}`, 'error')
+    }
+  }
+
   // Listen to launch events
   useEffect(() => {
     let unlistenStatus
@@ -817,13 +838,42 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                     <ChevronDown className="w-3 h-3" />
                   </button>
 
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
-                    {activeInstance.fabric_version ? 'Fabric' : 'Vanilla'}
-                  </span>
+                  {/* Toggle Loader Button (Vanilla <-> Fabric) */}
+                  <button
+                    onClick={handleToggleLoader}
+                    className={`text-[11px] font-mono px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                      activeInstance.fabric_version
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/25'
+                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                    }`}
+                    title="Click to switch between Fabric Loader and Vanilla"
+                  >
+                    <span>Loader: {activeInstance.fabric_version ? `Fabric (${activeInstance.fabric_version})` : 'Vanilla'}</span>
+                    <RotateCw className="w-2.5 h-2.5 opacity-70" />
+                  </button>
+
                   <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
                     {installedMods.length} Mods Active
                   </span>
                 </div>
+
+                {/* Mod warning if installed but Vanilla is active */}
+                {installedMods.length > 0 && !activeInstance.fabric_version && (
+                  <div
+                    onClick={handleToggleLoader}
+                    className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-3 cursor-pointer hover:bg-amber-500/20 transition-all text-left mt-2"
+                  >
+                    <div>
+                      <span className="font-bold block">Vanilla Mode Active</span>
+                      <span className="text-[11px] text-amber-200/80">
+                        You have {installedMods.length} mods installed, but the loader is Vanilla. Click here to enable Fabric!
+                      </span>
+                    </div>
+                    <button className="px-2.5 py-1 rounded-lg bg-amber-500 text-black font-bold text-[10px] uppercase flex-shrink-0 cursor-pointer">
+                      Enable Fabric
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons: Play / Force Out */}
@@ -912,18 +962,6 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Bottom Return Shortcut */}
-            <div className="absolute bottom-6 flex flex-col items-center gap-2">
-              <span className="text-[11px] text-slate-500">Escaping another launcher?</span>
-              <button
-                onClick={onBackToLauncher}
-                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
-              >
-                <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
-                <span>Return to Universal Game Library</span>
-              </button>
             </div>
           </div>
         )}

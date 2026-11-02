@@ -145,6 +145,46 @@ pub fn update_profile(profile: Profile) -> Result<Profile, String> {
 }
 
 #[tauri::command]
+pub async fn set_profile_loader(
+    profile_id: String,
+    loader: String,
+    loader_version: Option<String>,
+) -> Result<Profile, String> {
+    validate_profile_id(&profile_id)?;
+    let dir = get_profiles_dir()?;
+    let profile_dir = dir.join(&profile_id);
+    let config_path = profile_dir.join("profile.json");
+    if !config_path.exists() {
+        return Err("Profile does not exist.".into());
+    }
+    let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let mut profile: Profile = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    if loader.to_lowercase() == "fabric" {
+        let fabric_ver = if let Some(cv) = loader_version.filter(|v| !v.trim().is_empty()) {
+            cv
+        } else {
+            let client = reqwest::Client::new();
+            if let Ok(versions) = game_runtime::fabric::get_loader_versions(&client, &profile.mc_version).await {
+                versions.first().map(|v| v.version.clone()).unwrap_or_else(|| "0.20.1".into())
+            } else {
+                "0.20.1".into()
+            }
+        };
+        profile.fabric_version = Some(fabric_ver);
+    } else {
+        profile.fabric_version = None;
+    }
+
+    fs::write(
+        &config_path,
+        serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?,
+    ).map_err(|e| e.to_string())?;
+
+    Ok(profile)
+}
+
+#[tauri::command]
 pub fn open_instance_folder(profile_id: String) -> Result<(), String> {
     let target = require_instance(&profile_id)?;
     

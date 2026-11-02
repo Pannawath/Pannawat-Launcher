@@ -35,6 +35,7 @@ pub fn run() {
             profile::list_profiles,
             profile::create_profile,
             profile::update_profile,
+            profile::set_profile_loader,
             profile::delete_profile,
             profile::export_profile,
             profile::import_profile,

@@ -4,7 +4,6 @@ use jvm_builder::{spawn_game, JvmConfig};
 use tauri::{AppHandle, Emitter};
 use crate::commands::discord;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use tokio::io::AsyncReadExt;
 
 static ACTIVE_GAME_PID: AtomicU32 = AtomicU32::new(0);
 static LAUNCH_CANCELLED: AtomicBool = AtomicBool::new(false);
@@ -142,7 +141,7 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
         min_ram_mb,
         max_ram_mb,
         extra_flags,
-        game_dir: profile_dir,
+        game_dir: profile_dir.clone(),
         version_id: req.mc_version.clone(),
         username: session.username,
         uuid: session.uuid,
@@ -186,38 +185,53 @@ pub async fn launch_game(app: AppHandle, req: LaunchRequest) -> Result<(), Strin
     }
 
     let app_exit = app.clone();
-    let mut stdout = child.stdout.take();
-    let mut stderr = child.stderr.take();
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let logs_dir = profile_dir.join("logs");
+    let _ = tokio::fs::create_dir_all(&logs_dir).await;
+    let log_file_path = logs_dir.join("latest.log");
+
     tokio::spawn(async move {
-        let mut stdout_buf = Vec::new();
-        let mut stderr_buf = Vec::new();
-        // Drain both pipes concurrently; reading one to completion first can
-        // deadlock a noisy JVM when the other pipe reaches its OS buffer limit.
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let mut file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file_path)
+            .await
+            .ok();
+
         let stdout_read = async {
-            if let Some(ref mut stream) = stdout {
-                let _ = stream.read_to_end(&mut stdout_buf).await;
+            if let Some(pipe) = stdout {
+                let mut lines = BufReader::new(pipe).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Some(ref mut f) = file {
+                        let _ = f.write_all(line.as_bytes()).await;
+                        let _ = f.write_all(b"\n").await;
+                    }
+                }
             }
         };
+
         let stderr_read = async {
-            if let Some(ref mut stream) = stderr {
-                let _ = stream.read_to_end(&mut stderr_buf).await;
+            if let Some(pipe) = stderr {
+                let mut lines = BufReader::new(pipe).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    eprintln!("[MINECRAFT-LOG] {}", line);
+                }
             }
         };
+
         tokio::join!(stdout_read, stderr_read);
         let status = child.wait().await;
         tracing::info!("Game process exited with: {:?}", status);
         ACTIVE_GAME_PID.store(0, Ordering::SeqCst);
         discord::update_presence_idle();
-        let diagnostic = String::from_utf8_lossy(&stderr_buf).trim().to_string();
         let _ = app_exit.emit(
             "launch-status",
             LaunchStatusEvent {
                 status: "idle".into(),
-                message: if diagnostic.is_empty() {
-                    "Minecraft closed.".into()
-                } else {
-                    format!("Minecraft exited: {}", diagnostic.lines().last().unwrap_or(&diagnostic))
-                },
+                message: "Minecraft closed.".into(),
             },
         );
     });
