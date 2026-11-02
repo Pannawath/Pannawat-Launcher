@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { useSettingsStore } from '../store/settingsStore'
 import { useProfileStore } from '../store/profileStore'
+import OfflineAccountModal from '../components/OfflineAccountModal'
 
 export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const {
@@ -106,6 +107,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
   const [settingsCategory, setSettingsCategory] = useState('appearance')
   const [isVersionPickerOpen, setIsVersionPickerOpen] = useState(false)
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false)
 
   // Toast Notification
   const [toastNotification, setToastNotification] = useState(null)
@@ -132,6 +134,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
+        if (isAccountModalOpen) setIsAccountModalOpen(false)
         if (selectedProject) setSelectedProject(null)
         if (isVersionPickerOpen) setIsVersionPickerOpen(false)
         if (isCreateModalOpen) {
@@ -143,7 +146,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isCreateModalOpen, isSettingsModalOpen, selectedProject, isVersionPickerOpen])
+  }, [isCreateModalOpen, isSettingsModalOpen, selectedProject, isVersionPickerOpen, isAccountModalOpen])
 
   // Navigation handlers
   const navigateTo = (tab) => {
@@ -622,20 +625,32 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
 
         {/* Bottom Rail Controls */}
         <div className="flex flex-col items-center gap-2">
+          {/* Offline Account Profile Button */}
           <button
-            onClick={() => setIsSettingsModalOpen(true)}
-            className="w-10 h-10 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white flex items-center justify-center transition-all"
-            title="Settings (Java, Memory, Window, Behavior)"
+            onClick={() => setIsAccountModalOpen(true)}
+            className="relative w-10 h-10 rounded-xl bg-black/40 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 flex items-center justify-center transition-all cursor-pointer group"
+            title={`Offline Player: ${offlineUsername} (Click to switch or rename)`}
           >
-            <SettingsIcon className="w-4 h-4" />
+            <img
+              src={`https://mc-heads.net/avatar/${encodeURIComponent(offlineUsername)}/32`}
+              alt={offlineUsername}
+              onError={(e) => {
+                e.target.style.display = 'none'
+              }}
+              className="w-6 h-6 rounded-md object-contain bg-black/50"
+            />
+            <div
+              className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0d0e11]"
+              title="Offline Active"
+            />
           </button>
 
           <button
-            onClick={onBackToLauncher}
-            className="w-10 h-10 rounded-xl text-rose-400/80 hover:bg-rose-500/20 hover:text-rose-300 flex items-center justify-center transition-all"
-            title="Back to Universal Game Launcher"
+            onClick={() => setIsSettingsModalOpen(true)}
+            className="w-10 h-10 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+            title="Settings (Java, Memory, Window, Behavior)"
           >
-            <LogOut className="w-4 h-4" />
+            <SettingsIcon className="w-4 h-4" />
           </button>
         </div>
       </nav>
@@ -695,24 +710,26 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               </div>
             </div>
 
-            {/* Offline Account Name Tag (Click to edit inline, no black screen) */}
-            <div
-              onClick={() => {
-                const newName = prompt('Enter offline username:', offlineUsername)
-                if (newName && newName.trim()) {
-                  setOfflineUsername(newName.trim())
-                  showToast(`Player name set to: ${newName.trim()}`, 'success')
-                }
-              }}
-              className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs cursor-pointer transition-colors"
-              title="Click to rename player"
+            {/* Offline Account Name Tag (Click to switch or rename) */}
+            <button
+              onClick={() => setIsAccountModalOpen(true)}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs cursor-pointer transition-all"
+              title="Click to switch or rename player"
             >
-              <div className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="font-bold text-white text-[11px]">{offlineUsername}</span>
-              <span className="text-[10px] text-slate-400 bg-white/10 px-1.5 py-0.2 rounded font-mono">
-                Offline
+              <img
+                src={`https://mc-heads.net/avatar/${encodeURIComponent(offlineUsername)}/20`}
+                alt={offlineUsername}
+                onError={(e) => {
+                  e.target.style.display = 'none'
+                }}
+                className="w-4 h-4 rounded-sm object-contain"
+              />
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="font-bold text-white text-[11px] font-mono">{offlineUsername}</span>
+              <span className="text-[9px] text-emerald-400 bg-emerald-500/15 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold">
+                OFFLINE
               </span>
-            </div>
+            </button>
 
             {/* Window Controls */}
             <div className="flex items-center gap-1 pl-2">
@@ -1828,6 +1845,12 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
           </div>
         </div>
       )}
+
+      {/* 6.5 OFFLINE ACCOUNT MANAGER MODAL */}
+      <OfflineAccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+      />
 
       {/* 7. IN-APP GLASSMORPHISM TOAST NOTIFICATION */}
       {toastNotification && (

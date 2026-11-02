@@ -37,3 +37,18 @@ Observations captured during task-oriented work.
 **Suggested improvement:** When verifying desktop UI changes, inspect the rendered release app and verify the source that actually populates the visible data; do not stop at bundler success or frontend fallback code.
 
 **Principle:** Verify the behavior at its real source and in its real runtime.
+
+### Observation 3: Third-party provider approval can be a hard product delivery dependency
+
+**Status:** OPEN
+**Date:** 2026-11-02
+**Session context:** Designing a legitimate desktop game launcher with Microsoft/Minecraft authentication and provider-managed mod downloads
+**Skill:** architect
+**Type:** open-source
+**Phase/Area:** External integration boundaries
+
+**Issue:** A desktop application can complete a standard OAuth integration while still being rejected by a downstream service or unable to distribute provider content under the provider's API policy.
+
+**Suggested improvement:** Add an explicit delivery-gate check for downstream app allowlisting and content-distribution approval before promising an end-to-end integration.
+
+**Principle:** Separate protocol implementation readiness from provider authorization readiness; both are required to ship an integration.
