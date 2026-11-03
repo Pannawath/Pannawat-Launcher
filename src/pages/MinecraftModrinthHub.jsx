@@ -632,7 +632,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               onClick={() => navigateTo('home')}
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
                 activeTab === 'home'
-                  ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                  ? 'theme-accent-bg theme-shadow font-bold'
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
               }`}
               title="Home (Active Instance)"
@@ -644,7 +644,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               onClick={() => navigateTo('discover')}
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
                 activeTab === 'discover'
-                  ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                  ? 'theme-accent-bg theme-shadow font-bold'
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
               }`}
               title="Discover Content (Mods, Modpacks, Shaders)"
@@ -656,7 +656,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
               onClick={() => navigateTo('instances')}
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
                 activeTab === 'instances'
-                  ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                  ? 'theme-accent-bg theme-shadow font-bold'
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
               }`}
               title="Installed Instances Library"
@@ -886,7 +886,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                   <button
                     onClick={handleLaunch}
                     disabled={launchStatus === 'downloading'}
-                    className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm uppercase tracking-wider shadow-xl shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                    className="w-full py-3.5 rounded-xl theme-accent-bg hover:opacity-90 font-black text-sm uppercase tracking-wider theme-shadow transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
                     {launchStatus === 'downloading' ? (
                       <>
@@ -1138,7 +1138,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                     onClick={() => setInstanceSubTab('mods')}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                       instanceSubTab === 'mods'
-                        ? 'bg-emerald-500 text-black shadow-md'
+                        ? 'theme-accent-bg shadow-md'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -1153,7 +1153,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                     }}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                       instanceSubTab === 'files'
-                        ? 'bg-emerald-500 text-black shadow-md'
+                        ? 'theme-accent-bg shadow-md'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -1168,7 +1168,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                     }}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                       instanceSubTab === 'logs'
-                        ? 'bg-emerald-500 text-black shadow-md'
+                        ? 'theme-accent-bg shadow-md'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -1380,7 +1380,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
                         onClick={() => setLogFilter(f.id)}
                         className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           logFilter === f.id
-                            ? 'bg-emerald-500 text-black shadow-md'
+                            ? 'theme-accent-bg shadow-md'
                             : 'bg-white/5 text-slate-400 hover:text-white'
                         }`}
                       >
