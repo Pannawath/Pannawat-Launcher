@@ -36,6 +36,8 @@ import {
 import { useSettingsStore } from '../store/settingsStore'
 import { useProfileStore } from '../store/profileStore'
 import OfflineAccountModal from '../components/OfflineAccountModal'
+import AdvancedSettingsModal from '../components/AdvancedSettingsModal'
+import { useThemeStore } from '../store/themeStore'
 
 export default function MinecraftModrinthHub({ onBackToLauncher }) {
   const {
@@ -619,9 +621,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
             className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center cursor-pointer shadow-lg hover:border-emerald-400 transition-all"
             title="Minecraft Home"
           >
-            <div className="w-5 h-5 rounded-lg border-2 border-emerald-400 flex items-center justify-center">
-              <span className="text-[10px] font-black text-emerald-400">M</span>
-            </div>
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-emerald-500 to-cyan-400 flex items-center justify-center shadow-md shadow-emerald-500/20"><span className="text-xs font-black text-black">P</span></div>
           </div>
 
           <div className="w-8 h-[1px] bg-white/10 my-0.5" />
@@ -813,11 +813,7 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         {activeTab === 'home' && (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-y-auto">
             <div className="max-w-md w-full flex flex-col items-center space-y-6">
-              <div className="w-24 h-24 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shadow-2xl shadow-emerald-500/10 relative group">
-                <div className="w-14 h-14 rounded-2xl border-4 border-emerald-400 flex items-center justify-center">
-                  <span className="text-2xl font-black text-emerald-400">M</span>
-                </div>
-              </div>
+              <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-emerald-500/20 via-cyan-500/10 to-transparent border border-emerald-500/30 flex items-center justify-center shadow-2xl shadow-emerald-500/15 relative group"><div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-emerald-500/25"><span className="text-2xl font-black text-black tracking-tight">P</span></div></div>
 
               <div className="space-y-2">
                 <h2 className="text-2xl font-black text-white tracking-tight">
@@ -1763,167 +1759,12 @@ export default function MinecraftModrinthHub({ onBackToLauncher }) {
         </div>
       )}
 
-      {/* 6. MODRINTH SETTINGS MODAL */}
-      {isSettingsModalOpen && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in">
-          <div className="w-full max-w-2xl h-[520px] rounded-2xl bg-[#14161b] border border-white/15 shadow-2xl flex overflow-hidden">
-            <div className="w-52 h-full bg-[#0d0e11] border-r border-white/10 p-4 flex flex-col justify-between">
-              <div className="space-y-4">
-                <h3 className="font-black text-base text-white px-2">Settings</h3>
-                <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Display</span>
-                  <button
-                    onClick={() => setSettingsCategory('appearance')}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      settingsCategory === 'appearance' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Appearance
-                  </button>
-                  <button
-                    onClick={() => setSettingsCategory('behavior')}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      settingsCategory === 'behavior' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Behavior
-                  </button>
-                </div>
-
-                <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Instance Defaults</span>
-                  <button
-                    onClick={() => setSettingsCategory('java')}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      settingsCategory === 'java' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Java and memory
-                  </button>
-                  <button
-                    onClick={() => setSettingsCategory('window')}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      settingsCategory === 'window' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Window & Resolution
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 p-6 overflow-y-auto space-y-6">
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setIsSettingsModalOpen(false)}
-                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white transition-all border border-white/5 cursor-pointer"
-                  title="Close settings (Esc)"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {settingsCategory === 'java' && (
-                <div className="space-y-4">
-                  <h4 className="font-bold text-sm text-white">Java & Memory Allocation</h4>
-                  <p className="text-xs text-slate-400">These values are saved locally and used the next time an instance starts.</p>
-                  <div className="space-y-1">
-                    <label htmlFor="java-path" className="text-xs font-bold text-slate-300">Java executable (optional)</label>
-                    <div className="flex gap-2">
-                      <input id="java-path" value={javaPath} onChange={(event) => setJavaPath(event.target.value)} placeholder="Automatic per-version runtime" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white" />
-                      <button
-                        onClick={async () => {
-                          try {
-                            const path = await open({ multiple: false, filters: [{ name: 'Java executable', extensions: ['exe'] }] })
-                            if (typeof path === 'string') setJavaPath(path)
-                          } catch (error) { showToast(`Could not choose Java: ${error}`, 'error') }
-                        }}
-                        className="rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
-                      >Browse</button>
-                    </div>
-                  </div>
-                  <label className="block space-y-1 text-xs font-bold text-slate-300">
-                    Additional JVM arguments
-                    <input value={jvmArgs} onChange={(event) => setJvmArgs(event.target.value)} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-xs text-white" />
-                  </label>
-                  <div>
-                    <div className="flex justify-between text-xs font-bold mb-1">
-                      <span className="text-slate-300">Maximum Memory (Xmx)</span>
-                      <span className="text-emerald-400 font-mono">{allocatedRamMb} MB</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="2048"
-                      max="16384"
-                      step="512"
-                      value={allocatedRamMb}
-                      onChange={(e) => {
-                        const nextMax = Number(e.target.value)
-                        setAllocatedRamMb(nextMax)
-                        if (minRamMb > nextMax) setMinRamMb(nextMax)
-                      }}
-                      className="w-full accent-emerald-500 cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-xs font-bold mb-1">
-                      <span className="text-slate-300">Minimum Memory (Xms)</span>
-                      <span className="text-cyan-400 font-mono">{minRamMb} MB</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="512"
-                      max={Math.max(1024, Math.min(8192, allocatedRamMb))}
-                      step="256"
-                      value={Math.min(minRamMb, allocatedRamMb)}
-                      onChange={(event) => setMinRamMb(Math.min(Number(event.target.value), allocatedRamMb))}
-                      className="w-full accent-cyan-500 cursor-pointer"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {settingsCategory === 'window' && (
-                <div className="space-y-4">
-                  <h4 className="font-bold text-sm text-white">Window Size</h4>
-                  <p className="text-xs text-slate-400">Choose a size supported by this launcher. The minimum is 960 × 640.</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="space-y-1 text-xs text-slate-300">
-                      Width
-                      <input type="number" min="960" max="3840" step="80" value={windowWidth} onChange={(event) => setWindowWidth(Math.max(960, Number(event.target.value) || 960))} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white" />
-                    </label>
-                    <label className="space-y-1 text-xs text-slate-300">
-                      Height
-                      <input type="number" min="640" max="2160" step="80" value={windowHeight} onChange={(event) => setWindowHeight(Math.max(640, Number(event.target.value) || 640))} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white" />
-                    </label>
-                  </div>
-                  <button onClick={applyWindowSize} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black hover:bg-emerald-400">Apply window size</button>
-                </div>
-              )}
-
-              {settingsCategory === 'appearance' && (
-                <div className="space-y-3">
-                  <h4 className="font-bold text-sm text-white">Appearance</h4>
-                  <div className="rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-slate-300">
-                    <p className="font-bold text-white">Dark theme</p>
-                    <p className="mt-1 text-slate-400">The launcher currently uses its dark theme throughout.</p>
-                  </div>
-                </div>
-              )}
-
-              {settingsCategory === 'behavior' && (
-                <div className="space-y-3">
-                  <h4 className="font-bold text-sm text-white">Launcher Behavior</h4>
-                  <div className="rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-slate-300">
-                    <p className="font-bold text-white">Keep launcher open</p>
-                    <p className="mt-1 text-slate-400">The launcher stays open while the game starts. Other launch modes are not available yet.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 6. ADVANCED SETTINGS MODAL */}
+      <AdvancedSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onShowToast={(msg, type) => showToast(msg, type)}
+      />
 
       {/* 6.5 OFFLINE ACCOUNT MANAGER MODAL */}
       <OfflineAccountModal
