@@ -13,12 +13,17 @@ import {
   Info,
   ChevronRight,
   ExternalLink,
-  Laptop
+  Laptop,
+  Download,
+  RotateCw,
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react'
 import { useSettingsStore } from '../store/settingsStore'
 import { useThemeStore, THEMES } from '../store/themeStore'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) {
   const {
@@ -46,12 +51,80 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
 
   const { themeId, setThemeId } = useThemeStore()
   const [activeSection, setActiveSection] = useState('appearance')
-  const [systemRamGb, setSystemRamGb] = useState(16)
+  const [systemRamGb, setSystemRamGb] = useState(32)
+
+  // Update State
+  const [updateInfo, setUpdateInfo] = useState(null)
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [updateProgress, setUpdateProgress] = useState(null)
 
   useEffect(() => {
-    // Detect system info or fallback
-    setSystemRamGb(32) // User has 32GB
-  }, [])
+    let unlisten = null
+    const setupListener = async () => {
+      try {
+        unlisten = await listen('update_progress', (event) => {
+          setUpdateProgress(event.payload)
+          if (event.payload.stage === 'ready') {
+            setIsUpdating(false)
+            onShowToast?.(event.payload.message, 'success')
+          }
+        })
+      } catch (err) {
+        console.error('Failed to attach update_progress listener:', err)
+      }
+    }
+
+    if (isOpen) {
+      setupListener()
+    }
+
+    return () => {
+      if (unlisten) unlisten()
+    }
+  }, [isOpen])
+
+  const handleCheckUpdates = async () => {
+    setIsCheckingUpdate(true)
+    try {
+      const res = await invoke('check_for_updates')
+      setUpdateInfo(res)
+      if (res.has_update) {
+        onShowToast?.(`New update found: v${res.latest_version}!`, 'success')
+      } else {
+        onShowToast?.('You are on the latest version (v0.2.0)', 'info')
+      }
+    } catch (err) {
+      onShowToast?.(`Check updates failed: ${err}`, 'error')
+    } finally {
+      setIsCheckingUpdate(false)
+    }
+  }
+
+  const handleApplyUpdate = async () => {
+    if (!updateInfo?.download_url) {
+      onShowToast?.('No direct executable asset found for this release.', 'error')
+      return
+    }
+
+    setIsUpdating(true)
+    setUpdateProgress({
+      stage: 'downloading',
+      downloaded_bytes: 0,
+      total_bytes: 0,
+      percent: 0,
+      message: 'Starting update download...'
+    })
+
+    try {
+      await invoke('download_and_install_update', {
+        downloadUrl: updateInfo.download_url
+      })
+    } catch (err) {
+      setIsUpdating(false)
+      onShowToast?.(`Update failed: ${err}`, 'error')
+    }
+  }
 
   if (!isOpen) return null
 
@@ -100,7 +173,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                 onClick={() => setActiveSection('appearance')}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   activeSection === 'appearance'
-                    ? 'bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30'
+                    ? 'theme-accent-subtle font-bold border'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -112,7 +185,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                 onClick={() => setActiveSection('behavior')}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   activeSection === 'behavior'
-                    ? 'bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30'
+                    ? 'theme-accent-subtle font-bold border'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -128,7 +201,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                 onClick={() => setActiveSection('java')}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   activeSection === 'java'
-                    ? 'bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30'
+                    ? 'theme-accent-subtle font-bold border'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -140,7 +213,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                 onClick={() => setActiveSection('window')}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   activeSection === 'window'
-                    ? 'bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30'
+                    ? 'theme-accent-subtle font-bold border'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -153,10 +226,27 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
               </div>
 
               <button
+                onClick={() => setActiveSection('updates')}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  activeSection === 'updates'
+                    ? 'theme-accent-subtle font-bold border'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Download className="w-4 h-4" />
+                  Updates & Version
+                </div>
+                {updateInfo?.has_update && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                )}
+              </button>
+
+              <button
                 onClick={() => setActiveSection('about')}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   activeSection === 'about'
-                    ? 'bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30'
+                    ? 'theme-accent-subtle font-bold border'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -181,10 +271,11 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                 {activeSection === 'behavior' && 'Launcher Behavior & Integrations'}
                 {activeSection === 'java' && 'Java Runtime & Memory Optimization'}
                 {activeSection === 'window' && 'Display & Window Resolution'}
+                {activeSection === 'updates' && 'Launcher Updates & Versioning'}
                 {activeSection === 'about' && 'About Pannawat Launcher'}
               </h2>
               <p className="text-xs text-slate-400">
-                Configure your environment, themes, performance and offline preferences.
+                Configure your environment, themes, performance, offline and updater preferences.
               </p>
             </div>
 
@@ -230,7 +321,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                         </div>
 
                         {themeId === thm.id && (
-                          <div className="w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center">
+                          <div className="w-5 h-5 rounded-full theme-accent-bg text-black flex items-center justify-center font-bold">
                             <Check className="w-3.5 h-3.5 stroke-[3]" />
                           </div>
                         )}
@@ -246,7 +337,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                       <div className="text-xs font-semibold text-slate-200">Glassmorphism & Blur Effects</div>
                       <div className="text-[11px] text-slate-400">Render smooth backdrop-blur on panels and modal dialogs</div>
                     </div>
-                    <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                    <span className="text-xs font-bold theme-accent-text bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
                       ACTIVE (GPU ACCELERATED)
                     </span>
                   </div>
@@ -272,7 +363,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                         onClick={() => setLauncherBehavior(mode.id)}
                         className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                           launcherBehavior === mode.id
-                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                            ? 'theme-accent-subtle font-bold border'
                             : 'bg-black/30 border-white/5 hover:border-white/15 text-slate-300'
                         }`}
                       >
@@ -297,7 +388,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                       onClick={() => setDiscordRpc(!discordRpc)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         discordRpc
-                          ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                          ? 'theme-accent-bg text-black theme-shadow'
                           : 'bg-white/10 text-slate-400'
                       }`}
                     >
@@ -335,7 +426,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <h4 className="text-sm font-bold text-white">Maximum Memory Allocation (Xmx)</h4>
-                    <span className="font-mono text-sm font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    <span className="font-mono text-sm font-bold theme-accent-text bg-white/5 px-2 py-0.5 rounded border border-white/10">
                       {(allocatedRamMb / 1024).toFixed(1)} GB ({allocatedRamMb} MB)
                     </span>
                   </div>
@@ -359,7 +450,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                   <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
                     <span>2 GB</span>
                     <span>4 GB (Vanilla)</span>
-                    <span className="text-emerald-400 font-bold">8 GB (Modded Recommended)</span>
+                    <span className="theme-accent-text font-bold">8 GB (Modded Recommended)</span>
                     <span>12 GB</span>
                     <span>16 GB</span>
                   </div>
@@ -407,7 +498,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                     <label className="text-xs font-bold text-slate-200">Additional JVM Arguments</label>
                     <button
                       onClick={handleResetJvm}
-                      className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
+                      className="text-[11px] font-bold theme-accent-text hover:opacity-80 flex items-center gap-1 cursor-pointer"
                     >
                       <RotateCcw className="w-3 h-3" />
                       Reset to Optimized Aikar G1GC Flags
@@ -488,7 +579,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                     onClick={() => setFullscreen(!fullscreen)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       fullscreen
-                        ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                        ? 'theme-accent-bg text-black theme-shadow'
                         : 'bg-white/10 text-slate-400'
                     }`}
                   >
@@ -498,7 +589,114 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
               </div>
             )}
 
-            {/* SECTION 5: ABOUT & DIAGNOSTICS */}
+            {/* SECTION 5: UPDATER & VERSIONS */}
+            {activeSection === 'updates' && (
+              <div className="space-y-6">
+                <div className="p-5 rounded-2xl bg-black/40 border border-white/10 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Launcher Version Status</h4>
+                      <p className="text-xs text-slate-400">
+                        Check for new updates from GitHub and install seamlessly with 1-click.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleCheckUpdates}
+                      disabled={isCheckingUpdate || isUpdating}
+                      className="px-4 py-2 rounded-xl theme-accent-bg font-bold text-xs flex items-center gap-2 cursor-pointer hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      <RotateCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                      <span>{isCheckingUpdate ? 'Checking GitHub...' : 'Check for Updates'}</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs pt-2">
+                    <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
+                      <span className="text-[10px] text-slate-500 uppercase font-bold">Installed Version</span>
+                      <div className="text-slate-200 font-mono font-bold text-sm">v0.2.0</div>
+                      <div className="text-[10px] text-slate-400">Channel: Stable Release</div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
+                      <span className="text-[10px] text-slate-500 uppercase font-bold">Latest on GitHub</span>
+                      <div className="text-slate-200 font-mono font-bold text-sm">
+                        {updateInfo ? `v${updateInfo.latest_version}` : 'Not checked'}
+                      </div>
+                      <div className={`text-[10px] ${updateInfo?.has_update ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                        {updateInfo
+                          ? updateInfo.has_update
+                            ? 'Update Available!'
+                            : 'Up to Date'
+                          : 'Click check to scan'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* If update is available banner */}
+                {updateInfo?.has_update && (
+                  <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-cyan-500/10 to-transparent border border-emerald-500/30 space-y-4">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-emerald-400" />
+                          <h4 className="text-sm font-bold text-white">
+                            New Release: v{updateInfo.latest_version}
+                          </h4>
+                        </div>
+                        <p className="text-xs text-slate-300">
+                          A newer standalone build is ready on GitHub. Click below to download and auto-restart.
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={handleApplyUpdate}
+                        disabled={isUpdating}
+                        className="px-5 py-2.5 rounded-xl theme-accent-bg font-black text-xs uppercase tracking-wider theme-shadow hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>{isUpdating ? 'Updating...' : 'Update & Restart Now'}</span>
+                      </button>
+                    </div>
+
+                    {/* Progress Bar */}
+                    {isUpdating && updateProgress && (
+                      <div className="p-4 rounded-xl bg-black/60 border border-white/10 space-y-2">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-200">{updateProgress.message}</span>
+                          <span className="theme-accent-text font-mono font-bold">{updateProgress.percent.toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className="h-full theme-accent-bg transition-all duration-300"
+                            style={{ width: `${updateProgress.percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Release Notes */}
+                    <div className="space-y-1.5 pt-2">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase">Changelog</span>
+                      <div className="p-3.5 rounded-xl bg-black/50 border border-white/5 font-mono text-xs text-slate-300 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                        {updateInfo.release_notes}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* If checked and already up-to-date */}
+                {updateInfo && !updateInfo.has_update && (
+                  <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3 text-xs text-emerald-300">
+                    <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                    <span>Your launcher is running the latest version! No updates are required.</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SECTION 6: ABOUT & DIAGNOSTICS */}
             {activeSection === 'about' && (
               <div className="space-y-6">
                 <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-black/40 to-cyan-500/10 border border-white/10 flex items-center gap-4">
@@ -510,7 +708,7 @@ export default function AdvancedSettingsModal({ isOpen, onClose, onShowToast }) 
                     <p className="text-xs text-slate-400">Modrinth App Style Engine • Offline & Fabric Ready</p>
                     <div className="flex gap-2 mt-2">
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/10 text-slate-300 border border-white/10">v0.2.0-standalone</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Tauri 2.0 + Rust Core</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded theme-accent-subtle border">Tauri 2.0 + Rust Core</span>
                     </div>
                   </div>
                 </div>

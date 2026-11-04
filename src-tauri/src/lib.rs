@@ -1,6 +1,6 @@
 mod commands;
 
-use commands::{auth, discord, download, games, launch, mods, profile, versions};
+use commands::{auth, discord, download, games, launch, mods, profile, updater, versions};
 
 use tauri::Manager;
 
@@ -62,6 +62,9 @@ pub fn run() {
             // Download / Java
             download::check_java,
             download::download_java,
+            // Updater
+            updater::check_for_updates,
+            updater::download_and_install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pannawat Launcher");

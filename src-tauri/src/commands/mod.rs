@@ -5,4 +5,5 @@ pub mod games;
 pub mod launch;
 pub mod mods;
 pub mod profile;
+pub mod updater;
 pub mod versions;
