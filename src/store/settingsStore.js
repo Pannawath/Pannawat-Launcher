@@ -8,7 +8,7 @@ export const useSettingsStore = create(
       allocatedRamMb: 4096,
       minRamMb: 1024,
       javaPath: '',
-      jvmArgs: '-XX:+UseZGC -XX:+ZGenerational',
+      jvmArgs: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+DisableExplicitGC -XX:+AlwaysPreTouch',
       selectedVersion: '1.21.4',
 
       // Window & Resolution

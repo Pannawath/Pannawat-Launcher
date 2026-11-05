@@ -26,15 +26,55 @@ pub struct JvmConfig {
 pub fn build_args(cfg: &JvmConfig) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
 
-    // Check if the user specified their own GC collector (e.g., -XX:+UseG1GC, -XX:+UseParallelGC, etc.)
-    let has_custom_gc = cfg
-        .extra_flags
-        .iter()
-        .any(|flag| flag.contains("UseG1GC") || flag.contains("UseZGC") || flag.contains("UseParallelGC") || flag.contains("UseSerialGC") || flag.contains("UseShenandoahGC"));
+    // Sanitize user extra flags to ensure no duplicate GC collectors, heap size conflicts, or obsolete options
+    let mut sanitized_user_flags: Vec<String> = Vec::new();
+    let mut user_selected_gc: Option<String> = None;
 
-    if !has_custom_gc {
-        args.push("-XX:+UseG1GC".into());
+    for flag in &cfg.extra_flags {
+        let trimmed = flag.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Detect GC selector
+        if trimmed.contains("UseZGC") {
+            user_selected_gc = Some("-XX:+UseZGC".to_string());
+            continue;
+        } else if trimmed.contains("UseG1GC") {
+            user_selected_gc = Some("-XX:+UseG1GC".to_string());
+            continue;
+        } else if trimmed.contains("UseParallelGC") {
+            user_selected_gc = Some("-XX:+UseParallelGC".to_string());
+            continue;
+        } else if trimmed.contains("UseSerialGC") {
+            user_selected_gc = Some("-XX:+UseSerialGC".to_string());
+            continue;
+        } else if trimmed.contains("UseShenandoahGC") {
+            user_selected_gc = Some("-XX:+UseShenandoahGC".to_string());
+            continue;
+        }
+
+        // Skip obsolete/removed flags that cause JVM warnings or aborts in modern Java 24/25
+        if trimmed.contains("ZGenerational") {
+            continue;
+        }
+
+        // Skip conflicting heap definitions if already specified via min_ram_mb/max_ram_mb
+        if trimmed.starts_with("-Xms") || trimmed.starts_with("-Xmx") || trimmed.starts_with("-Xss") {
+            continue;
+        }
+
+        // Avoid duplicate common performance flags
+        if trimmed == "-XX:+AlwaysPreTouch" || trimmed == "-XX:+DisableExplicitGC" {
+            continue;
+        }
+
+        sanitized_user_flags.push(trimmed.to_string());
     }
+
+    // Exactly ONE GC collector must be used
+    let chosen_gc = user_selected_gc.unwrap_or_else(|| "-XX:+UseG1GC".to_string());
+    args.push(chosen_gc);
 
     // Default performance flags
     args.push("-XX:+AlwaysPreTouch".into());
@@ -73,8 +113,8 @@ pub fn build_args(cfg: &JvmConfig) -> Vec<String> {
             .join(if cfg!(windows) { ";" } else { ":" }),
     );
 
-    // User extra custom flags
-    args.extend(cfg.extra_flags.iter().cloned());
+    // User extra custom flags (sanitized)
+    args.extend(sanitized_user_flags);
 
     // Main class
     args.push(cfg.main_class.clone());
